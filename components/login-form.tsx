@@ -45,14 +45,29 @@ export function LoginForm({ onRegisterClick, onLoginSuccess }: LoginFormProps) {
         return
       }
       
-      const userData = {
+      const userData = userDoc.data()
+      
+      // Check if employer account is blocked/rejected
+      if ((userData.role === "employer" || 
+          (userData.role === "multi" && userData.activeRole === "employer")) && 
+          userData.verificationRejected === true) {
+        
+        const rejectionReason = userData.rejectionReason || "No specific reason provided."
+        setError(`Your employer account has been blocked. Reason: ${rejectionReason}`)
+        
+        // Sign out from Firebase auth since we're rejecting the login
+        await auth.signOut()
+        return
+      }
+      
+      const userDataForStorage = {
         id: user.uid,
         email: user.email,
-        ...userDoc.data(),
+        ...userData,
       }
       
       // Store user data in local storage
-      localStorage.setItem("ranaojobs_user", JSON.stringify(userData))
+      localStorage.setItem("ranaojobs_user", JSON.stringify(userDataForStorage))
 
       // Dispatch custom event to notify other components
       window.dispatchEvent(new Event("userStateChange"))
@@ -60,7 +75,7 @@ export function LoginForm({ onRegisterClick, onLoginSuccess }: LoginFormProps) {
       if (onLoginSuccess) onLoginSuccess()
 
       // Redirect based on user role
-      const role = userDoc.data().role
+      const role = userData.role
       
       if (role === "admin") {
         router.push("/admin")
@@ -70,7 +85,7 @@ export function LoginForm({ onRegisterClick, onLoginSuccess }: LoginFormProps) {
         router.push("/jobseeker-home")
       } else if (role === "multi") {
         // For multi-role users, redirect based on their active role
-        const activeRole = userDoc.data().activeRole || "jobseeker"
+        const activeRole = userData.activeRole || "jobseeker"
         if (activeRole === "employer") {
           router.push("/employer-home")
         } else {

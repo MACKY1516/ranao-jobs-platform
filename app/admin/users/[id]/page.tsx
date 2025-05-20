@@ -25,6 +25,7 @@ interface UserData {
   role: string
   isDisabled?: boolean
   isVerified?: boolean
+  status?: string
   companyName?: string
   createdAt: string
   updatedAt?: string
@@ -357,12 +358,18 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                 </Badge>
                 <Badge
                   className={
-                    userData.isDisabled
+                    userData.status === "rejected"
                       ? "bg-red-100 text-red-800"
-                      : "bg-green-100 text-green-800"
+                      : userData.isVerified
+                        ? "bg-green-100 text-green-800"
+                        : "bg-yellow-100 text-yellow-800"
                   }
                 >
-                  {userData.isDisabled ? "suspended" : "active"}
+                  {userData.status === "rejected"
+                    ? "Inactive"
+                    : userData.isVerified
+                      ? "Verified"
+                      : "Not Verified"}
                 </Badge>
               </div>
 
@@ -402,12 +409,18 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                   <p className="text-sm text-gray-500 mb-2">Verification Status</p>
                   <Badge
                     className={
-                      userData.isVerified
-                        ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
+                      userData.status === "rejected"
+                        ? "bg-red-100 text-red-800"
+                        : userData.isVerified
+                          ? "bg-green-100 text-green-800"
+                          : "bg-yellow-100 text-yellow-800"
                     }
-                  >
-                    {userData.isVerified ? "Verified" : "Not Verified"}
+                  >  {userData.status === "rejected"
+                      ? "Rejected"
+                      : userData.isVerified
+                        ? "Verified"
+                        : "Not Verified"}
+                  
                   </Badge>
                 </div>
               )}

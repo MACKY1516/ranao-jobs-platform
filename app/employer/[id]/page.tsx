@@ -11,63 +11,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmployerRating } from "@/components/employer-rating"
 import { MapPin, Globe, Mail, Phone, Calendar, Users, Briefcase } from "lucide-react"
 import { BackButton } from "@/components/back-button"
+import { doc, getDoc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+
+async function fetchEmployerById(id: string) {
+  const docRef = doc(db, "users", id);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) return docSnap.data();
+  return null;
+}
 
 export default function EmployerProfilePage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [userRole, setUserRole] = useState<string | null>(null)
-
-  // Mock employer data - in a real app, this would come from an API
-  const employer = {
-    id: params.id,
-    name: "Tech Solutions Inc.",
-    logo: null,
-    description:
-      "Tech Solutions Inc. is a leading technology company specializing in web and mobile application development. We work with clients across various industries to deliver innovative digital solutions.",
-    industry: "Technology",
-    location: "Marawi City, Banggolo",
-    website: "https://techsolutions.example.com",
-    email: "contact@techsolutions.example.com",
-    phone: "+63 123 456 7890",
-    foundedYear: "2015",
-    employeeCount: "11-50 employees",
-    rating: 4.2,
-    reviewCount: 15,
-    verified: true,
-    socialMedia: {
-      linkedin: "https://linkedin.com/company/techsolutions",
-      facebook: "https://facebook.com/techsolutions",
-      twitter: "https://twitter.com/techsolutions",
-    },
-  }
-
-  // Mock job listings from this employer
-  const jobs = [
-    {
-      id: "1",
-      title: "Senior Frontend Developer",
-      location: "Marawi City",
-      type: "Full-time",
-      salary: "₱60,000 - ₱80,000",
-      postedAt: "2 days ago",
-    },
-    {
-      id: "2",
-      title: "Backend Engineer",
-      location: "Marawi City",
-      type: "Full-time",
-      salary: "₱65,000 - ₱85,000",
-      postedAt: "1 week ago",
-    },
-    {
-      id: "3",
-      title: "UI/UX Designer",
-      location: "Remote",
-      type: "Full-time",
-      salary: "₱50,000 - ₱70,000",
-      postedAt: "2 weeks ago",
-    },
-  ]
+  const [employer, setEmployer] = useState<any>(null)
+  const [jobs, setJobs] = useState<any[]>([])
 
   // Check user role
   useEffect(() => {
@@ -87,6 +46,19 @@ export default function EmployerProfilePage({ params }: { params: { id: string }
     }, 1000)
   }, [])
 
+  useEffect(() => {
+    // Fetch employer data here (replace with your actual fetch logic)
+    // Example:
+    fetchEmployerById(params.id).then(data => setEmployer(data));
+  }, [params.id])
+
+  useEffect(() => {
+    if (!employer?.id) return;
+    // Replace with your actual Firestore jobs fetching logic
+    // Example:
+    // fetchJobsByEmployerId(employer.id).then(setJobs);
+  }, [employer]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen">
@@ -99,6 +71,10 @@ export default function EmployerProfilePage({ params }: { params: { id: string }
         <Footer />
       </div>
     )
+  }
+
+  if (!employer) {
+    return <div>Loading...</div>;
   }
 
   return (
@@ -212,7 +188,7 @@ export default function EmployerProfilePage({ params }: { params: { id: string }
                     {Object.entries(employer.socialMedia).map(([platform, url]) => (
                       <a
                         key={platform}
-                        href={url}
+                        href={url as string}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"

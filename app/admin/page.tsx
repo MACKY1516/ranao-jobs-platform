@@ -122,7 +122,9 @@ export default function AdminDashboard() {
         where("role", "in", ["employer", "multi"])
       )
       const pendingVerificationsSnapshot = await getDocs(pendingVerificationsQuery)
-      const pendingVerifications = pendingVerificationsSnapshot.size
+      const pendingVerifications = pendingVerificationsSnapshot.docs.filter(
+        doc => !doc.data().verificationRejected
+      ).length
       
       // Fetch active jobs count
       const jobsQuery = query(collection(db, "jobs"), where("isActive", "==", true))
@@ -140,18 +142,24 @@ export default function AdminDashboard() {
       // Fetch recent employers awaiting verification
       const recentEmployersQuery = query(
         collection(db, "users"),
-        where("isVerified", "==", false),
         where("role", "in", ["employer", "multi"]),
         orderBy("createdAt", "desc"),
         limit(3)
       )
       const recentEmployersSnapshot = await getDocs(recentEmployersQuery)
-      const recentEmployersData = recentEmployersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().companyName || "Unnamed Company",
-        date: doc.data().createdAt,
-        status: "Pending"
-      }))
+      const recentEmployersData = recentEmployersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        let status = "pending";
+        if (data.isVerified) status = "approved";
+        else if (data.verificationRejected) status = "rejected";
+        else if (data.isDisabled) status = "suspended";
+        return {
+          id: doc.id,
+          name: data.companyName || "Unnamed Company",
+          date: data.createdAt,
+          status
+        };
+      });
       setRecentEmployers(recentEmployersData)
       
       // Fetch recent job listings
