@@ -12,13 +12,15 @@ import { Footer } from "@/components/footer"
 import { AuthCheckModal } from "@/components/auth-check-modal"
 import { Briefcase, MapPin, Upload, AlertCircle, MapIcon, User, Clock } from "lucide-react"
 import Link from "next/link"
+import { calculateJobseekerProfileCompletion } from "@/lib/profileCompletion"
+import { getUserProfile } from "@/lib/users"
 
 export default function JobseekerHomePage() {
   const router = useRouter()
   const [userData, setUserData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
-  const [profileCompletion, setProfileCompletion] = useState(40)
+  const [profileCompletion, setProfileCompletion] = useState(0)
   const [hasResume, setHasResume] = useState(false)
   const [suggestedJobs, setSuggestedJobs] = useState([
     {
@@ -86,7 +88,28 @@ export default function JobseekerHomePage() {
     }
 
     setUserData(user)
-    setIsLoading(false)
+    
+    // Fetch profile data and calculate completion percentage
+    const fetchProfileData = async () => {
+      try {
+        // Get the full profile data from Firestore
+        const profileData = await getUserProfile(user.id);
+        
+        // Check if user has a resume
+        setHasResume(!!profileData.resume);
+        
+        // Calculate profile completion percentage
+        const completionPercentage = await calculateJobseekerProfileCompletion(user.id);
+        setProfileCompletion(completionPercentage);
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error fetching profile data:", error);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchProfileData();
   }, [router])
 
   if (isLoading && !isAuthModalOpen) {

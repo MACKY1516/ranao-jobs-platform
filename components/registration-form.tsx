@@ -205,9 +205,9 @@ export function RegistrationForm({ onLoginClick, onRegisterSuccess }: Registrati
 
       // Redirect based on role
       if (formData.role === "employer") {
-        router.push("/employer-dashboard")
+        router.push("/employer-home")
       } else {
-        router.push("/jobseeker-dashboard")
+        router.push("/jobseeker-home")
       }
     } catch (err: any) {
       console.error(err)
@@ -293,7 +293,7 @@ export function RegistrationForm({ onLoginClick, onRegisterSuccess }: Registrati
             </div>
           </RadioGroup>
 
-          <div className="flex items-center space-x-2 pt-2">
+          {/* <div className="flex items-center space-x-2 pt-2">
             <Checkbox
               id="multiRole"
               checked={formData.isMultiRole}
@@ -302,7 +302,7 @@ export function RegistrationForm({ onLoginClick, onRegisterSuccess }: Registrati
             <Label htmlFor="multiRole" className="font-normal">
               Enable Multi-Role Account (access both Jobseeker and Employer features)
             </Label>
-          </div>
+          </div> */}
         </div>
 
         {/* Dynamic fields based on role selection */}

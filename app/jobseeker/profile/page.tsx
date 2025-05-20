@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,18 +15,99 @@ import { Switch } from "@/components/ui/switch"
 import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
 import { AuthCheckModal } from "@/components/auth-check-modal"
-import { Upload, FileText, Save } from "lucide-react"
+import { Upload, FileText, Save, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { BackButton } from "@/components/back-button"
 import { RoleSwitcher } from "@/components/role-switcher"
+import { getUserProfile, updateUserProfile } from "@/lib/users"
+import { uploadJobseekerPhoto, uploadJobseekerResume } from "@/lib/fileUpload"
+import { useToast } from "@/components/ui/use-toast"
+
+// Define a type for the additional document
+interface AdditionalDocument {
+  name: string;
+  url: string;
+  uploadedAt: string;
+}
+
+// Define a type for profile data 
+interface ProfileData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+  title: string;
+  about: string;
+  skills: string[];
+  experience: Array<{
+    id: number;
+    title: string;
+    company: string;
+    location: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+  }>;
+  education: Array<{
+    id: number;
+    degree: string;
+    institution: string;
+    location: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+  }>;
+  certifications: Array<{
+    id: number;
+    name: string;
+    issuer: string;
+    date: string;
+    description: string;
+  }>;
+  languages: string[];
+  availability: string;
+  salaryExpectation: string;
+  isRemote: boolean;
+  isRelocate: boolean;
+  profilePhoto?: string;
+  resume?: string;
+  resumeFileName?: string;
+  resumeUpdatedAt?: string;
+  additionalDocuments: AdditionalDocument[];
+}
 
 export default function JobseekerProfilePage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [userData, setUserData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isMultiRole, setIsMultiRole] = useState(false)
-  const [profileData, setProfileData] = useState({
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false)
+  const [isResumeUploading, setIsResumeUploading] = useState(false)
+  const [isDocumentUploading, setIsDocumentUploading] = useState(false)
+  
+  // Add state for preview data
+  const [previewData, setPreviewData] = useState({
+    photoUrl: "",
+    resumeUrl: "",
+  })
+  
+  // Add state for unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  
+  // Add state for file objects to store temporarily before saving
+  const [unsavedFiles, setUnsavedFiles] = useState<{
+    profilePhoto: File | null,
+    resume: File | null
+  }>({
+    profilePhoto: null,
+    resume: null
+  })
+  
+  const [profileData, setProfileData] = useState<ProfileData>({
     firstName: "",
     lastName: "",
     email: "",
@@ -80,8 +161,17 @@ export default function JobseekerProfilePage() {
     salaryExpectation: "₱60,000 - ₱80,000",
     isRemote: true,
     isRelocate: false,
+    profilePhoto: "",
+    resume: "",
+    resumeFileName: "",
+    resumeUpdatedAt: "",
+    additionalDocuments: []
   })
   const [wantsToUpgrade, setWantsToUpgrade] = useState(false)
+
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // Check if user is logged in
@@ -107,18 +197,103 @@ export default function JobseekerProfilePage() {
 
     setIsMultiRole(user.role === "multi")
     setUserData(user)
-    setProfileData((prev) => ({
-      ...prev,
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
-      email: user.email || "",
-    }))
-    setIsLoading(false)
+    
+    // Fetch profile data from Firebase
+    const fetchProfileData = async () => {
+      try {
+        const profile = await getUserProfile(user.id);
+        
+        // Update state with profile data
+        setProfileData(prevData => ({
+          ...prevData,
+          firstName: profile.firstName || "",
+          lastName: profile.lastName || "",
+          email: profile.email || "",
+          phone: profile.phone || "",
+          location: profile.location || "",
+          title: profile.title || prevData.title,
+          about: profile.about || prevData.about,
+          skills: profile.skills || prevData.skills,
+          experience: profile.experience || prevData.experience,
+          education: profile.education || prevData.education,
+          certifications: profile.certifications || prevData.certifications,
+          languages: profile.languages || prevData.languages,
+          availability: profile.availability || prevData.availability,
+          salaryExpectation: profile.salaryExpectation || prevData.salaryExpectation,
+          isRemote: profile.isRemote !== undefined ? profile.isRemote : prevData.isRemote,
+          isRelocate: profile.isRelocate !== undefined ? profile.isRelocate : prevData.isRelocate,
+          profilePhoto: profile.profilePhoto || "",
+          resume: profile.resume || "",
+          resumeFileName: profile.resumeFileName || "",
+          resumeUpdatedAt: profile.resumeUpdatedAt || "",
+          additionalDocuments: profile.additionalDocuments || []
+        }));
+        
+        // Initialize preview data
+        setPreviewData({
+          photoUrl: profile.profilePhoto || "",
+          resumeUrl: profile.resume || "",
+        });
+        
+      } catch (error) {
+        console.error("Error fetching profile data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchProfileData();
   }, [router])
 
-  const handleSaveProfile = () => {
-    // In a real app, this would save to a database
-    alert("Profile saved successfully!")
+  // Add save function
+  const handleSaveProfile = async () => {
+    if (!userData) return;
+    
+    setIsSaving(true);
+    try {
+      let profileUpdates = { ...profileData };
+      
+      // Process profile photo if uploaded but not saved
+      if (unsavedFiles.profilePhoto) {
+        const photoUrl = await uploadJobseekerPhoto(unsavedFiles.profilePhoto, userData.id);
+        profileUpdates.profilePhoto = photoUrl;
+      }
+      
+      // Process resume if uploaded but not saved
+      if (unsavedFiles.resume) {
+        const resumeUrl = await uploadJobseekerResume(unsavedFiles.resume, userData.id);
+        profileUpdates.resume = resumeUrl;
+        profileUpdates.resumeFileName = unsavedFiles.resume.name;
+        profileUpdates.resumeUpdatedAt = new Date().toISOString();
+      }
+      
+      // Update Firestore with all changes
+      await updateUserProfile(userData.id, profileUpdates);
+      
+      // Update local state
+      setProfileData(profileUpdates);
+      
+      // Clear unsaved changes
+      setUnsavedFiles({
+        profilePhoto: null,
+        resume: null
+      });
+      setHasUnsavedChanges(false);
+      
+      toast({
+        title: "Profile saved",
+        description: "Your profile has been updated successfully",
+      });
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save your profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const handleUpgradeToMultiRole = () => {
@@ -137,6 +312,240 @@ export default function JobseekerProfilePage() {
       alert("Your account has been upgraded to MultiRole! You can now switch between Jobseeker and Employer roles.")
     }
   }
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !userData) return
+    
+    try {
+      setIsPhotoUploading(true)
+      const file = e.target.files[0]
+      
+      // Validate file type
+      if (!file.type.includes('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file (PNG, JPG)",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Profile photo must be under 2MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onload = () => {
+        const previewUrl = reader.result as string;
+        
+        // Update preview data
+        setPreviewData({
+          ...previewData,
+          photoUrl: previewUrl
+        });
+        
+        // Store file for later upload
+        setUnsavedFiles({
+          ...unsavedFiles,
+          profilePhoto: file
+        });
+        
+        // Set unsaved changes flag
+        setHasUnsavedChanges(true);
+      };
+      reader.readAsDataURL(file);
+      
+      toast({
+        title: "Photo ready for upload",
+        description: "Click 'Save Profile' to apply your changes",
+      });
+    } catch (error) {
+      console.error("Error processing photo:", error)
+      toast({
+        title: "Upload failed",
+        description: "There was a problem uploading your photo",
+        variant: "destructive",
+      })
+    } finally {
+      setIsPhotoUploading(false)
+    }
+  }
+  
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !userData) return
+    
+    try {
+      setIsResumeUploading(true)
+      const file = e.target.files[0]
+      
+      // Validate file type
+      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a PDF, DOC, or DOCX file",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Resume must be under 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Create a preview URL
+      const reader = new FileReader();
+      reader.onload = () => {
+        const previewUrl = reader.result as string;
+        
+        // Update preview data
+        setPreviewData({
+          ...previewData,
+          resumeUrl: previewUrl
+        });
+        
+        // Update state for preview
+        setProfileData({
+          ...profileData,
+          resumeFileName: file.name,
+          resumeUpdatedAt: new Date().toISOString()
+        });
+        
+        // Store file for later upload
+        setUnsavedFiles({
+          ...unsavedFiles,
+          resume: file
+        });
+        
+        // Set unsaved changes flag
+        setHasUnsavedChanges(true);
+      };
+      reader.readAsDataURL(file);
+      
+      toast({
+        title: "Resume ready for upload",
+        description: "Click 'Save Profile' to apply your changes",
+      });
+    } catch (error) {
+      console.error("Error processing resume:", error)
+      toast({
+        title: "Upload failed", 
+        description: "There was a problem processing your resume",
+        variant: "destructive",
+      })
+    } finally {
+      setIsResumeUploading(false)
+    }
+  }
+  
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {    
+    if (!e.target.files || !e.target.files[0] || !userData) return
+    
+    try {
+      setIsDocumentUploading(true)
+      const file = e.target.files[0]
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Document must be under 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Create a reader to read the file as DataURL
+      const reader = new FileReader()
+      
+      reader.onload = () => {
+        try {
+          const fileDataUrl = reader.result as string
+          
+          // Add document to preview
+          const newDocument: AdditionalDocument = {
+            name: file.name,
+            url: fileDataUrl,
+            uploadedAt: new Date().toISOString()
+          }
+          
+          // Make sure additionalDocuments is initialized
+          const currentDocuments = profileData.additionalDocuments || [];
+          
+          // Add to local state for preview (will be saved when user clicks Save Profile)
+          setProfileData({
+            ...profileData,
+            additionalDocuments: [...currentDocuments, newDocument]
+          })
+          
+          // Mark that we have unsaved changes
+          setHasUnsavedChanges(true)
+          
+          toast({
+            title: "Document ready for upload",
+            description: "Click 'Save Profile' to apply your changes",
+          })
+        } catch (err) {
+          console.error("Error processing document:", err)
+          toast({
+            title: "Upload failed", 
+            description: "There was a problem processing your document",
+            variant: "destructive",
+          })
+        } finally {
+          setIsDocumentUploading(false)
+        }
+      }
+      
+      reader.onerror = () => {
+        toast({
+          title: "Upload failed", 
+          description: "Failed to read document file",
+          variant: "destructive",
+        })
+        setIsDocumentUploading(false)
+      }
+      
+      // Start reading the file as DataURL
+      reader.readAsDataURL(file)
+    } catch (error) {
+      console.error("Error uploading document:", error)
+      toast({
+        title: "Upload failed", 
+        description: "There was a problem uploading your document",
+        variant: "destructive",
+      })
+      setIsDocumentUploading(false)
+    }
+  }
+
+  // Cleanup function to free resources when component unmounts
+  useEffect(() => {
+    return () => {
+      // Clean up any object URLs to avoid memory leaks
+      if (profileData.additionalDocuments) {
+        profileData.additionalDocuments.forEach(doc => {
+          // Check if it's an object URL (not a data URL)
+          if (doc.url.startsWith('blob:')) {
+            URL.revokeObjectURL(doc.url);
+          }
+        });
+      }
+    };
+  }, []);
 
   if (isLoading && !isAuthModalOpen) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>
@@ -160,10 +569,23 @@ export default function JobseekerProfilePage() {
                   <RoleSwitcher />
                 </div>
               )}
-              <Button className="bg-yellow-500 hover:bg-yellow-600 text-black" onClick={handleSaveProfile}>
-                <Save className="mr-2 h-4 w-4" />
-                Save Changes
-              </Button>
+                          <Button 
+              className={`${hasUnsavedChanges ? 'bg-yellow-500 animate-pulse' : 'bg-yellow-500'} hover:bg-yellow-600 text-black`}
+              onClick={handleSaveProfile}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Profile
+                </>
+              )}
+            </Button>
             </div>
           </div>
 
@@ -197,38 +619,40 @@ export default function JobseekerProfilePage() {
           {!isMultiRole && wantsToUpgrade && (
             <Card className="mb-6 border-yellow-500">
               <CardHeader className="bg-yellow-50">
-                <CardTitle className="text-lg">Complete Your Employer Profile</CardTitle>
+                <CardTitle className="text-lg">Complete Employer Information</CardTitle>
                 <CardDescription>
-                  Please provide the following information to complete your employer profile
+                  Please provide the following information to upgrade to a multi-role account
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Company Name</Label>
+                  <Input id="companyName" placeholder="Your company's name" />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name</Label>
-                    <Input id="companyName" placeholder="Your company name" />
+                    <Label htmlFor="companyIndustry">Industry</Label>
+                    <Input id="companyIndustry" placeholder="e.g. Technology, Healthcare" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="industry">Industry</Label>
-                    <Select>
-                      <SelectTrigger id="industry">
-                        <SelectValue placeholder="Select industry" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="technology">Technology</SelectItem>
-                        <SelectItem value="healthcare">Healthcare</SelectItem>
-                        <SelectItem value="education">Education</SelectItem>
-                        <SelectItem value="finance">Finance</SelectItem>
-                        <SelectItem value="retail">Retail</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="companySize">Company Size</Label>
+                    <Input id="companySize" placeholder="Number of employees" />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="companyDescription">Company Description</Label>
-                  <Textarea id="companyDescription" placeholder="Brief description of your company" rows={3} />
+                  <Label htmlFor="businessDescription">Business Description</Label>
+                  <Textarea
+                    id="businessDescription"
+                    placeholder="Brief description of your business"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="businessWebsite">Business Website</Label>
+                  <Input id="businessWebsite" placeholder="e.g. https://example.com" />
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-2">
@@ -242,6 +666,12 @@ export default function JobseekerProfilePage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Add Save Profile button at the top */}
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">My Profile</h2>
+
+          </div>
 
           <Tabs defaultValue="personal" className="space-y-6">
             <TabsList className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -261,16 +691,54 @@ export default function JobseekerProfilePage() {
                 <CardContent className="space-y-6">
                   <div className="flex flex-col items-center mb-6">
                     <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-200 mb-4">
-                      <Image src="/placeholder.svg?height=96&width=96" alt="Profile" fill className="object-cover" />
+                      <Image 
+                        src={previewData.photoUrl || profileData.profilePhoto || "/placeholder.svg?height=96&width=96"} 
+                        alt="Profile" 
+                        fill 
+                        className="object-cover" 
+                      />
                       <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="sm" className="text-white">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-white"
+                          onClick={() => photoInputRef.current?.click()}
+                        >
                           <Upload className="h-4 w-4" />
                         </Button>
                       </div>
+                      {unsavedFiles.profilePhoto && (
+                        <div className="absolute top-0 right-0 bg-amber-500 text-white text-xs px-1 rounded-bl">
+                          Preview
+                        </div>
+                      )}
                     </div>
-                    <Button variant="outline" size="sm">
-                      Upload Photo
+                    <input
+                      type="file"
+                      ref={photoInputRef}
+                      onChange={handlePhotoUpload}
+                      accept="image/*"
+                      className="hidden"
+                      id="photo-upload"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => photoInputRef.current?.click()}
+                      disabled={isPhotoUploading}
+                    >
+                      {isPhotoUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>Upload Photo</>
+                      )}
                     </Button>
+                    {unsavedFiles.profilePhoto && (
+                      <p className="text-xs text-amber-600 mt-1">Click 'Save Profile' to apply changes</p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -521,53 +989,136 @@ export default function JobseekerProfilePage() {
                     <FileText className="h-12 w-12 mx-auto mb-4 text-gray-400" />
                     <h3 className="font-medium mb-2">Upload your resume</h3>
                     <p className="text-sm text-gray-500 mb-4">Supported formats: PDF, DOCX, DOC (Max 5MB)</p>
-                    <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Resume
+                    <input
+                      type="file"
+                      ref={resumeInputRef}
+                      onChange={handleResumeUpload}
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      id="resume-upload"
+                    />
+                    <Button 
+                      className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                      onClick={() => resumeInputRef.current?.click()}
+                      disabled={isResumeUploading}
+                    >
+                      {isResumeUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Upload Resume
+                        </>
+                      )}
                     </Button>
+                    {(previewData.resumeUrl || profileData.resume) && (
+                      <div className="mt-4 text-left bg-gray-50 p-3 rounded-md relative">
+                        {unsavedFiles.resume && (
+                          <div className="absolute top-0 right-0 bg-amber-500 text-white text-xs px-1 rounded-bl">
+                            Preview
+                          </div>
+                        )}
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 mr-2 text-blue-500" />
+                          <div>
+                            <p className="font-medium">{profileData.resumeFileName || "Resume"}</p>
+                            <p className="text-xs text-gray-500">
+                              {unsavedFiles.resume ? 
+                                "Ready to save" : 
+                                `Uploaded on ${new Date(profileData.resumeUpdatedAt || Date.now()).toLocaleDateString()}`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        {unsavedFiles.resume && (
+                          <p className="text-xs text-amber-600 mt-1">Click 'Save Profile' to apply changes</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">
                     <h3 className="font-medium">Additional Documents</h3>
-                    <div className="border rounded-lg p-4 flex justify-between items-center">
-                      <div className="flex items-center">
-                        <FileText className="h-8 w-8 mr-3 text-blue-500" />
-                        <div>
-                          <p className="font-medium">Portfolio.pdf</p>
-                          <p className="text-sm text-gray-500">Uploaded on Jan 15, 2023</p>
+                    {profileData.additionalDocuments && profileData.additionalDocuments.length > 0 ? (
+                      profileData.additionalDocuments.map((doc: any, index: number) => (
+                        <div key={index} className="border rounded-lg p-4 flex justify-between items-center relative">
+                          {hasUnsavedChanges && doc.uploadedAt && new Date(doc.uploadedAt) > new Date(Date.now() - 60000) && (
+                            <div className="absolute top-0 right-0 bg-amber-500 text-white text-xs px-1 rounded-bl">
+                              Preview
+                            </div>
+                          )}
+                          <div className="flex items-center">
+                            <FileText className="h-8 w-8 mr-3 text-blue-500" />
+                            <div>
+                              <p className="font-medium">{doc.name}</p>
+                              <p className="text-sm text-gray-500">
+                                {doc.uploadedAt && new Date(doc.uploadedAt).toLocaleDateString()}
+                                {hasUnsavedChanges && doc.uploadedAt && new Date(doc.uploadedAt) > new Date(Date.now() - 60000) && 
+                                  <span className="ml-2 text-amber-600">(Needs saving)</span>}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(doc.url, '_blank')}
+                            >
+                              View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-500"
+                              onClick={() => {
+                                const updatedDocs = [...profileData.additionalDocuments];
+                                updatedDocs.splice(index, 1);
+                                setProfileData({
+                                  ...profileData,
+                                  additionalDocuments: updatedDocs
+                                });
+                                // Mark unsaved changes when removing documents
+                                setHasUnsavedChanges(true);
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          View
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-500">
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 italic text-center p-4 border rounded-lg">
+                        No documents uploaded yet.
+                      </p>
+                    )}
 
-                    <div className="border rounded-lg p-4 flex justify-between items-center">
-                      <div className="flex items-center">
-                        <FileText className="h-8 w-8 mr-3 text-green-500" />
-                        <div>
-                          <p className="font-medium">CoverLetter.pdf</p>
-                          <p className="text-sm text-gray-500">Uploaded on Jan 10, 2023</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          View
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-500">
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-
-                    <Button variant="outline" className="w-full">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Additional Document
+                    <input
+                      type="file"
+                      ref={documentInputRef}
+                      onChange={handleDocumentUpload}
+                      className="hidden"
+                      id="document-upload"
+                    />
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => documentInputRef.current?.click()}
+                      disabled={isDocumentUploading}
+                    >
+                      {isDocumentUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Upload Additional Document
+                        </>
+                      )}
                     </Button>
                   </div>
                 </CardContent>
@@ -679,3 +1230,4 @@ export default function JobseekerProfilePage() {
     </div>
   )
 }
+

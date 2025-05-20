@@ -23,6 +23,7 @@ export function NavBar() {
   const [userRole, setUserRole] = useState<string | null>(null)
   const [activeRole, setActiveRole] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
+  const [profile, setprofile] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
   // Fix hydration mismatch by only rendering after mount
@@ -152,63 +153,7 @@ export function NavBar() {
                 </a>
               )}
 
-              {/* Only show these links if not a jobseeker */}
-              {(!isLoggedIn || isEmployer) && (
-                <>
-                  {/* Conditional navigation based on role */}
-                  {isEmployer ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className={`flex items-center text-sm font-medium text-gray-300 hover:text-yellow-500 ${
-                            pathname === "/post-job" || pathname === "/find-candidates" ? "text-yellow-500" : ""
-                          }`}
-                        >
-                          For Employers <ChevronDown className="ml-1 h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href="/post-job">
-                            <Briefcase className="mr-2 h-4 w-4" />
-                            Post a Job
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href="/find-candidates">
-                            <Users className="mr-2 h-4 w-4" />
-                            Find Candidates
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href="/employer/profile">Profile Settings</Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className={`flex items-center text-sm font-medium text-gray-300 hover:text-yellow-500 ${
-                            pathname === "/post-job" || pathname === "/find-candidates" ? "text-yellow-500" : ""
-                          }`}
-                        >
-                          For Employers <ChevronDown className="ml-1 h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href="/post-job">Post a Job</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href="/find-candidates">Find Candidates</Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </>
-              )}
-
+             
               {/* Show About and Contact only for non-logged in users */}
               {!isLoggedIn && (
                 <>
@@ -246,7 +191,9 @@ export function NavBar() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="relative flex items-center gap-2 text-gray-300">
                         <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center">
+
                           <User className="h-4 w-4" />
+                          
                         </div>
                         <span className="max-w-[100px] truncate">{userName}</span>
                         <ChevronDown className="h-4 w-4" />
