@@ -40,7 +40,7 @@ export function EmployerJobsList() {
   const [jobs, setJobs] = useState<JobPosting[]>([])
   const [filteredJobs, setFilteredJobs] = useState<JobPosting[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("active")
   const [isLoading, setIsLoading] = useState(true)
   const [jobToDelete, setJobToDelete] = useState<JobPosting | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)

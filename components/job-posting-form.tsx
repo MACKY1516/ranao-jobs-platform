@@ -187,7 +187,7 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
         
         toast({
           title: "Success",
-          description: "Job posted successfully and sent for admin verification. You'll be notified when it's approved.",
+          description: "Job posted successfully and is now live.",
           variant: "default",
         })
       }
@@ -209,15 +209,7 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
   return (
     <Card className="bg-white shadow-md">
       <CardContent className="p-6">
-        {!isEdit && (
-          <Alert className="mb-6 bg-blue-50 border-blue-200">
-            <InfoIcon className="h-4 w-4 text-blue-600" />
-            <AlertTitle className="text-blue-800">Verification Required</AlertTitle>
-            <AlertDescription className="text-blue-700">
-              All job postings are reviewed by our admin team before being published. This usually takes 1-2 business days.
-            </AlertDescription>
-          </Alert>
-        )}
+       
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">

@@ -177,12 +177,6 @@ export default function AdminJobsPage() {
             <h1 className="text-2xl font-bold">All Jobs</h1>
             <p className="text-gray-500">Manage all job listings across the platform</p>
           </div>
-          <Button 
-            onClick={() => router.push('/admin/jobs/verification')}
-            className="bg-yellow-500 hover:bg-yellow-600 text-black"
-          >
-            Job Verification Dashboard
-          </Button>
         </div>
         
         {/* Filters */}
