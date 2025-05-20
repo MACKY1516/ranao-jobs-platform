@@ -52,7 +52,7 @@ async function addTestJob() {
       companyName: "Test Company Name",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      isActive: true,
+     // isActive: true,
       applicationsCount: 0
     };
 

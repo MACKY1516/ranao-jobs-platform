@@ -33,7 +33,6 @@ export function AdminSidebar({ isOpen = false, setIsOpen, currentPath = "" }: Ad
     { href: "/admin/users", label: "Manage Users", icon: Users },
     { href: "/admin/employers", label: "Manage Employers", icon: Building2 },
     { href: "/admin/jobs", label: "Manage Job Listings", icon: Briefcase },
-    { href: "/admin/jobs/verification", label: "Job Verifications", icon: FileCheck },
     { href: "/admin/verifications", label: "Employer Verifications", icon: FileCheck },
     { href: "/admin/multirole-requests", label: "Multi-Role Requests", icon: UserPlus },
     { href: "/admin/activity", label: "Activity Log", icon: Activity },

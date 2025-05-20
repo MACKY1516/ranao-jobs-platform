@@ -195,7 +195,8 @@ export default function EmployerVerificationsPage() {
         verificationRejected: true,
         rejectedAt: new Date().toISOString(),
         rejectionReason: rejectionReason.trim(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        status: 'rejected',
       })
       
       // Remove from pending list

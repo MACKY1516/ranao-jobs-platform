@@ -293,8 +293,8 @@ export default function EmployerHomePage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Jobs Awaiting Approval</CardTitle>
-                <CardDescription>Jobs pending admin approval</CardDescription>
+                <CardTitle className="text-lg">Active Jobs</CardTitle>
+                <CardDescription>Jobs that are currently active</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
@@ -304,9 +304,9 @@ export default function EmployerHomePage() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <Link href="/employer/jobs?filter=pending">
+                  <Link href="/employer/jobs?filter=active">
                     <Button variant="ghost" size="sm" className="p-0 h-auto text-orange-600">
-                      View pending jobs
+                      View active jobs
                       <ChevronRight className="ml-1 h-4 w-4" />
                     </Button>
                   </Link>

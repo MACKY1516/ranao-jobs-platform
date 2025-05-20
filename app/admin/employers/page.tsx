@@ -83,6 +83,14 @@ export default function ManageEmployersPage() {
             // Get user's first and last name for contact person
             const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'No Contact Name'
             
+            let status = 'pending';
+            if (userData.isVerified) {
+              status = 'verified';
+            } else if (userData.status === 'rejected') {
+              status = 'rejected';
+            } else if (userData.isDisabled) {
+              status = 'suspended';
+            }
             return {
               id: docSnapshot.id,
               companyName: userData.companyName || 'Unnamed Company',
@@ -91,7 +99,7 @@ export default function ManageEmployersPage() {
               location: userData.city || 'Marawi City',
               industry: userData.industry || 'Not specified',
               jobsPosted: jobsCount,
-              status: userData.isVerified ? 'verified' : userData.isDisabled ? 'suspended' : 'pending',
+              status,
               registeredAt: formatDate(userData.createdAt)
             }
           })
@@ -205,7 +213,11 @@ export default function ManageEmployersPage() {
                             ? "bg-green-100 text-green-800"
                             : value === "pending"
                               ? "bg-yellow-100 text-yellow-800"
-                              : "bg-red-100 text-red-800"
+                              : value === "rejected"
+                                ? "bg-orange-100 text-orange-800"
+                                : value === "suspended"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-gray-100 text-gray-800"
                         }`}
                       >
                         {value}

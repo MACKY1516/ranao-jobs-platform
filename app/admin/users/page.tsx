@@ -73,7 +73,7 @@ export default function ManageUsersPage() {
             name: fullName,
             email: data.email || 'No Email',
             role: data.role || 'jobseeker',
-            status: data.isDisabled ? 'suspended' : 'active',
+            status: data.status || 'active',
             location,
             registeredAt: formatDate(data.createdAt),
             lastActive: formatDate(data.lastLogin || data.createdAt)
@@ -198,7 +198,9 @@ export default function ManageUsersPage() {
                             ? "bg-green-100 text-green-800"
                             : value === "suspended"
                               ? "bg-red-100 text-red-800"
-                              : "bg-gray-100 text-gray-800"
+                              : value === "pending"
+                                ? "bg-orange-100 text-orange-800"
+                                : "bg-gray-100 text-gray-800"
                         }`}
                       >
                         {value}

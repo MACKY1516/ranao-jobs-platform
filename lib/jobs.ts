@@ -57,7 +57,7 @@ export async function addJobPosting(jobData: Omit<JobPosting, "id" | "createdAt"
       ...jobData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      isActive: false,
+      isActive: true, // Immediately active
       applicationsCount: 0
     }
     
