@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { BackButton } from "@/components/back-button"
 import { RoleSwitcher } from "@/components/role-switcher"
 import { getUserProfile, updateCompanyProfile, requestMultiRoleUpgrade } from "@/lib/users"
 import { useToast } from "@/components/ui/use-toast"
+import { uploadEmployerLogo, uploadEmployerCoverImage } from "@/lib/fileUpload"
 
 export default function EmployerProfilePage() {
   const router = useRouter()
@@ -57,12 +58,35 @@ export default function EmployerProfilePage() {
     publicProfile: true,
   })
   
+  // Add new state for unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [previewData, setPreviewData] = useState({
+    logo: "/placeholder.svg?height=200&width=200",
+    coverImage: "/placeholder.svg?height=400&width=1200",
+  })
+  // Add file state to store uploaded files
+  const [uploadedFiles, setUploadedFiles] = useState<{
+    logo: File | null,
+    coverImage: File | null
+  }>({
+    logo: null,
+    coverImage: null
+  })
+  
+  // Add state to track initial form values for comparison
+  const [initialProfileData, setInitialProfileData] = useState({...profileData})
+  
   const [jobseekerData, setJobseekerData] = useState({
     firstName: "",
     lastName: "",
     professionalTitle: "",
     aboutMe: "",
   })
+
+  const [isLogoUploading, setIsLogoUploading] = useState(false)
+  const [isCoverImageUploading, setIsCoverImageUploading] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const coverImageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // Check if user is logged in
@@ -105,39 +129,48 @@ export default function EmployerProfilePage() {
         }
         
         // Update profile data with user's data from Firestore
-        setProfileData(prevData => ({
-          ...prevData,
-          companyName: profile.companyName || prevData.companyName,
-          industry: profile.industry || prevData.industry,
-          companySize: profile.companySize || prevData.companySize,
-          founded: profile.founded || prevData.founded,
-          website: profile.website || prevData.website,
-          email: profile.email || prevData.email,
-          phone: profile.phone || prevData.phone,
-          address: profile.address || prevData.address,
-          city: profile.city || prevData.city,
-          province: profile.province || prevData.province,
-          country: profile.country || prevData.country,
-          postalCode: profile.postalCode || prevData.postalCode,
-          description: profile.description || prevData.description,
-          benefits: profile.benefits || prevData.benefits,
+        const updatedProfileData = {
+          companyName: profile.companyName || profileData.companyName,
+          industry: profile.industry || profileData.industry,
+          companySize: profile.companySize || profileData.companySize,
+          founded: profile.founded || profileData.founded,
+          website: profile.website || profileData.website,
+          email: profile.email || profileData.email,
+          phone: profile.phone || profileData.phone,
+          address: profile.address || profileData.address,
+          city: profile.city || profileData.city,
+          province: profile.province || profileData.province,
+          country: profile.country || profileData.country,
+          postalCode: profile.postalCode || profileData.postalCode,
+          description: profile.description || profileData.description,
+          benefits: profile.benefits || profileData.benefits,
           socialMedia: {
-            linkedin: profile.socialMedia?.linkedin || prevData.socialMedia.linkedin,
-            facebook: profile.socialMedia?.facebook || prevData.socialMedia.facebook,
-            twitter: profile.socialMedia?.twitter || prevData.socialMedia.twitter,
+            linkedin: profile.socialMedia?.linkedin || profileData.socialMedia.linkedin,
+            facebook: profile.socialMedia?.facebook || profileData.socialMedia.facebook,
+            twitter: profile.socialMedia?.twitter || profileData.socialMedia.twitter,
           },
-          logo: profile.logo || prevData.logo,
-          coverImage: profile.coverImage || prevData.coverImage,
+          logo: profile.logo || profileData.logo,
+          coverImage: profile.coverImage || profileData.coverImage,
           receiveApplications: profile.receiveApplications !== undefined 
             ? profile.receiveApplications 
-            : prevData.receiveApplications,
+            : profileData.receiveApplications,
           notifyNewApplicants: profile.notifyNewApplicants !== undefined 
             ? profile.notifyNewApplicants 
-            : prevData.notifyNewApplicants,
+            : profileData.notifyNewApplicants,
           publicProfile: profile.publicProfile !== undefined 
             ? profile.publicProfile 
-            : prevData.publicProfile,
-        }))
+            : profileData.publicProfile,
+        };
+        
+        setProfileData(updatedProfileData);
+        // Also store the initial data for comparison
+        setInitialProfileData(updatedProfileData);
+        
+        // Initialize preview data with current saved data
+        setPreviewData({
+          logo: profile.logo || "/placeholder.svg?height=200&width=200",
+          coverImage: profile.coverImage || "/placeholder.svg?height=400&width=1200",
+        })
         
         // If user has multi-role, populate jobseeker data
         if (profile.role === "multi") {
@@ -157,7 +190,7 @@ export default function EmployerProfilePage() {
           variant: "destructive",
         })
       } finally {
-    setIsLoading(false)
+        setIsLoading(false)
       }
     }
     
@@ -202,12 +235,90 @@ export default function EmployerProfilePage() {
     };
   }, [userData]);
 
+  // Add effect to track changes in form data
+  useEffect(() => {
+    // Skip the initial render
+    if (isLoading) return;
+    
+    // If there are uploaded files, we already know there are unsaved changes
+    if (uploadedFiles.logo || uploadedFiles.coverImage) {
+      setHasUnsavedChanges(true);
+      return;
+    }
+    
+    // Compare current profile data with initial data to detect changes
+    const hasChanges = 
+      profileData.companyName !== initialProfileData.companyName ||
+      profileData.industry !== initialProfileData.industry ||
+      profileData.companySize !== initialProfileData.companySize ||
+      profileData.founded !== initialProfileData.founded ||
+      profileData.website !== initialProfileData.website ||
+      profileData.phone !== initialProfileData.phone ||
+      profileData.address !== initialProfileData.address ||
+      profileData.city !== initialProfileData.city ||
+      profileData.province !== initialProfileData.province ||
+      profileData.postalCode !== initialProfileData.postalCode ||
+      profileData.description !== initialProfileData.description ||
+      profileData.receiveApplications !== initialProfileData.receiveApplications ||
+      profileData.notifyNewApplicants !== initialProfileData.notifyNewApplicants ||
+      profileData.publicProfile !== initialProfileData.publicProfile ||
+      JSON.stringify(profileData.benefits) !== JSON.stringify(initialProfileData.benefits) ||
+      profileData.socialMedia.linkedin !== initialProfileData.socialMedia.linkedin ||
+      profileData.socialMedia.facebook !== initialProfileData.socialMedia.facebook ||
+      profileData.socialMedia.twitter !== initialProfileData.socialMedia.twitter;
+    
+    setHasUnsavedChanges(hasChanges);
+    
+  }, [
+    isLoading,
+    uploadedFiles,
+    profileData,
+    initialProfileData
+  ]);
+
+  // Add effect to handle window beforeunload event for unsaved changes warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  // Add effect to reset hasUnsavedChanges when profile is first loaded
+  useEffect(() => {
+    if (!isLoading) {
+      setHasUnsavedChanges(false);
+    }
+  }, [isLoading]);
+
   const handleSaveProfile = async () => {
     if (!userData) return
     
     setIsSaving(true)
     try {
-      // Save company profile to Firestore
+      let updatedLogoUrl = profileData.logo
+      let updatedCoverImageUrl = profileData.coverImage
+      
+      // Process uploaded logo if exists
+      if (uploadedFiles.logo) {
+        updatedLogoUrl = await uploadEmployerLogo(uploadedFiles.logo, userData.id)
+      }
+      
+      // Process uploaded cover image if exists
+      if (uploadedFiles.coverImage) {
+        updatedCoverImageUrl = await uploadEmployerCoverImage(uploadedFiles.coverImage, userData.id)
+      }
+      
+      // Save company profile to Firestore with updated image URLs
       await updateCompanyProfile(userData.id, {
         companyName: profileData.companyName,
         industry: profileData.industry,
@@ -223,12 +334,33 @@ export default function EmployerProfilePage() {
         description: profileData.description,
         benefits: profileData.benefits,
         socialMedia: profileData.socialMedia,
-        logo: profileData.logo,
-        coverImage: profileData.coverImage,
+        logo: updatedLogoUrl,
+        coverImage: updatedCoverImageUrl,
         receiveApplications: profileData.receiveApplications,
         notifyNewApplicants: profileData.notifyNewApplicants,
         publicProfile: profileData.publicProfile,
       })
+      
+      // Update the main profileData with the new URLs
+      const updatedProfileData = {
+        ...profileData,
+        logo: updatedLogoUrl,
+        coverImage: updatedCoverImageUrl
+      };
+      
+      setProfileData(updatedProfileData);
+      
+      // Update initialProfileData to match current data
+      setInitialProfileData(updatedProfileData);
+      
+      // Clear uploaded files state
+      setUploadedFiles({
+        logo: null,
+        coverImage: null
+      })
+      
+      // Reset unsaved changes flag
+      setHasUnsavedChanges(false)
       
       toast({
         title: "Success",
@@ -280,6 +412,136 @@ export default function EmployerProfilePage() {
     }
   }
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !userData) return
+    
+    try {
+      setIsLogoUploading(true)
+      const file = e.target.files[0]
+      
+      // Validate file type
+      if (!file.type.includes('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file (PNG, JPG)",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Logo image must be under 2MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Create preview URL
+      const reader = new FileReader()
+      reader.onload = () => {
+        const previewUrl = reader.result as string
+        
+        // Update preview only (don't save to server yet)
+        setPreviewData(prev => ({
+          ...prev,
+          logo: previewUrl
+        }))
+        
+        // Store the file for later upload when Save Changes is clicked
+        setUploadedFiles(prev => ({
+          ...prev,
+          logo: file
+        }))
+        
+        // Set flag for unsaved changes
+        setHasUnsavedChanges(true)
+      }
+      reader.readAsDataURL(file)
+      
+      toast({
+        title: "Logo preview ready",
+        description: "Click Save Changes to apply your new logo",
+      })
+    } catch (error) {
+      console.error("Error processing logo:", error)
+      toast({
+        title: "Upload failed",
+        description: "There was a problem uploading your logo",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLogoUploading(false)
+    }
+  }
+  
+  const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !userData) return
+    
+    try {
+      setIsCoverImageUploading(true)
+      const file = e.target.files[0]
+      
+      // Validate file type
+      if (!file.type.includes('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file (PNG, JPG)",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Cover image must be under 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Create preview URL
+      const reader = new FileReader()
+      reader.onload = () => {
+        const previewUrl = reader.result as string
+        
+        // Update preview only (don't save to server yet)
+        setPreviewData(prev => ({
+          ...prev,
+          coverImage: previewUrl
+        }))
+        
+        // Store the file for later upload when Save Changes is clicked
+        setUploadedFiles(prev => ({
+          ...prev,
+          coverImage: file
+        }))
+        
+        // Set flag for unsaved changes
+        setHasUnsavedChanges(true)
+      }
+      reader.readAsDataURL(file)
+      
+      toast({
+        title: "Cover image preview ready",
+        description: "Click Save Changes to apply your new cover image",
+      })
+    } catch (error) {
+      console.error("Error processing cover image:", error)
+      toast({
+        title: "Upload failed",
+        description: "There was a problem uploading your cover image",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCoverImageUploading(false)
+    }
+  }
+
   if (isLoading && !isAuthModalOpen) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>
   }
@@ -302,8 +564,14 @@ export default function EmployerProfilePage() {
                   <RoleSwitcher />
                 </div>
               )}
+              {hasUnsavedChanges && (
+                <p className="text-amber-600 text-xs md:text-sm flex items-center">
+                  <span className="hidden md:inline mr-1">You have unsaved changes!</span>
+                  <span className="md:hidden mr-1">Unsaved changes</span>
+                </p>
+              )}
               <Button 
-                className="bg-yellow-500 hover:bg-yellow-600 text-black" 
+                className={`${hasUnsavedChanges ? 'bg-yellow-500 animate-pulse' : 'bg-yellow-500'} hover:bg-yellow-600 text-black`}
                 onClick={handleSaveProfile}
                 disabled={isSaving}
               >
@@ -652,53 +920,7 @@ export default function EmployerProfilePage() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Social Media</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="linkedin">LinkedIn</Label>
-                        <Input
-                          id="linkedin"
-                          value={profileData.socialMedia.linkedin}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              socialMedia: { ...profileData.socialMedia, linkedin: e.target.value },
-                            })
-                          }
-                          placeholder="https://linkedin.com/company/..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="facebook">Facebook</Label>
-                        <Input
-                          id="facebook"
-                          value={profileData.socialMedia.facebook}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              socialMedia: { ...profileData.socialMedia, facebook: e.target.value },
-                            })
-                          }
-                          placeholder="https://facebook.com/..."
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="twitter">Twitter</Label>
-                        <Input
-                          id="twitter"
-                          value={profileData.socialMedia.twitter}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              socialMedia: { ...profileData.socialMedia, twitter: e.target.value },
-                            })
-                          }
-                          placeholder="https://twitter.com/..."
-                        />
-                      </div>
-                    </div>
-                  </div>
+                          
                 </CardContent>
               </Card>
             </TabsContent>
@@ -716,7 +938,7 @@ export default function EmployerProfilePage() {
                     <div className="flex flex-col items-center p-6 border rounded-lg">
                       <div className="relative w-32 h-32 mb-4 bg-gray-100 rounded-lg overflow-hidden">
                         <Image
-                          src={profileData.logo || "/placeholder.svg"}
+                          src={previewData.logo || "/placeholder.svg"}
                           alt="Company Logo"
                           fill
                           className="object-contain"
@@ -725,10 +947,38 @@ export default function EmployerProfilePage() {
                       <p className="text-sm text-gray-500 mb-4">
                         Upload a square logo (PNG, JPG). Recommended size: 200x200px
                       </p>
-                      <Button variant="outline">
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Logo
-                      </Button>
+                      <input
+                        type="file"
+                        ref={logoInputRef}
+                        onChange={handleLogoUpload}
+                        accept="image/*"
+                        className="hidden"
+                        id="logo-upload"
+                      />
+                      <div className="flex flex-col gap-2 w-full">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={isLogoUploading}
+                        >
+                          {isLogoUploading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-2 h-4 w-4" />
+                              Upload Logo
+                            </>
+                          )}
+                        </Button>
+                        {uploadedFiles.logo && (
+                          <p className="text-xs text-amber-600 text-center">
+                            Changes will be applied after clicking "Save Changes"
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -737,7 +987,7 @@ export default function EmployerProfilePage() {
                     <div className="flex flex-col items-center p-6 border rounded-lg">
                       <div className="relative w-full h-40 mb-4 bg-gray-100 rounded-lg overflow-hidden">
                         <Image
-                          src={profileData.coverImage || "/placeholder.svg"}
+                          src={previewData.coverImage || "/placeholder.svg"}
                           alt="Cover Image"
                           fill
                           className="object-cover"
@@ -746,10 +996,38 @@ export default function EmployerProfilePage() {
                       <p className="text-sm text-gray-500 mb-4">
                         Upload a cover image (PNG, JPG). Recommended size: 1200x400px
                       </p>
-                      <Button variant="outline">
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Cover Image
-                      </Button>
+                      <input
+                        type="file"
+                        ref={coverImageInputRef}
+                        onChange={handleCoverImageUpload}
+                        accept="image/*"
+                        className="hidden"
+                        id="cover-image-upload"
+                      />
+                      <div className="flex flex-col gap-2 w-full">
+                        <Button 
+                          variant="outline"
+                          onClick={() => coverImageInputRef.current?.click()}
+                          disabled={isCoverImageUploading}
+                        >
+                          {isCoverImageUploading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="mr-2 h-4 w-4" />
+                              Upload Cover Image
+                            </>
+                          )}
+                        </Button>
+                        {uploadedFiles.coverImage && (
+                          <p className="text-xs text-amber-600 text-center">
+                            Changes will be applied after clicking "Save Changes"
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
 

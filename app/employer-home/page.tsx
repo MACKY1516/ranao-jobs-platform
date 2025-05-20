@@ -14,6 +14,7 @@ import { db } from "@/lib/firebase"
 import { collection, query, where, getDocs, orderBy, limit, getDoc, doc, Timestamp } from "firebase/firestore"
 import { useToast } from "@/components/ui/use-toast"
 import { formatDistanceToNow } from "date-fns"
+import { calculateEmployerProfileCompletion } from "@/lib/profileCompletion"
 
 export default function EmployerHomePage() {
   const router = useRouter()
@@ -21,7 +22,7 @@ export default function EmployerHomePage() {
   const [userData, setUserData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
-  const [profileCompletion, setProfileCompletion] = useState(30)
+  const [profileCompletion, setProfileCompletion] = useState(0)
   const [stats, setStats] = useState({
     totalJobs: 0,
     totalApplicants: 0,
@@ -174,27 +175,11 @@ export default function EmployerHomePage() {
           newApplicants: newApplicantsCount
         })
         
-        // Calculate profile completion
-        const userDoc = await getDoc(doc(db, "users", user.id))
-        if (userDoc.exists()) {
-          const userData = userDoc.data()
-          
-          // Fields that should be filled for a complete profile
-          const requiredFields = [
-            'companyName', 'industry', 'companySize', 
-            'founded', 'description', 'website', 
-            'contactEmail', 'contactPhone', 'address'
-          ]
-          
-          // Count how many are filled
-          const filledFields = requiredFields.filter(field => 
-            userData[field] && userData[field].toString().trim() !== ''
-          ).length
-          
-          // Calculate percentage
-          const completion = Math.round((filledFields / requiredFields.length) * 100)
-          setProfileCompletion(completion)
-        }
+        // Calculate profile completion using the new utility function
+        const completionPercentage = await calculateEmployerProfileCompletion(user.id);
+        setProfileCompletion(completionPercentage);
+        
+        setIsLoading(false)
       } catch (error) {
         console.error("Error fetching employer data:", error)
         toast({
@@ -202,7 +187,6 @@ export default function EmployerHomePage() {
           description: "Failed to load your dashboard data",
           variant: "destructive",
         })
-      } finally {
         setIsLoading(false)
       }
     }
