@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -19,7 +19,9 @@ import { addEmployerActivity } from "@/lib/notifications"
 import { getDoc, doc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 
-export default function JobApplicationPage({ params }: { params: { id: string } }) {
+export default function ApplyJobPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
   const router = useRouter()
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -36,7 +38,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
 
   // This would normally come from an API call using the job ID
   const job = {
-    id: params.id,
+    id: jobId,
     title: "Senior Frontend Developer",
     company: "Tech Solutions Inc.",
     location: "Marawi City, Banggolo",
@@ -53,7 +55,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
 
         // If user is an employer, redirect to job details
         if (user.role === "employer" || (user.role === "multi" && user.activeRole === "employer")) {
-          router.push(`/job/${params.id}`)
+          router.push(`/job/${jobId}`)
         }
       } catch (error) {
         console.error("Error parsing user data:", error)
@@ -78,7 +80,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
 
           // If user is an employer, redirect to job details
           if (user.role === "employer" || (user.role === "multi" && user.activeRole === "employer")) {
-            router.push(`/job/${params.id}`)
+            router.push(`/job/${jobId}`)
           }
         } catch (error) {
           console.error("Error parsing user data:", error)
@@ -97,7 +99,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
     return () => {
       window.removeEventListener("userStateChange", handleUserStateChange)
     }
-  }, [params.id, router])
+  }, [jobId, router])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -183,7 +185,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
         <Footer />
         <AuthCheckModal
           isOpen={isAuthModalOpen}
-          onClose={() => router.push(`/job/${params.id}`)}
+          onClose={() => router.push(`/job/${jobId}`)}
           title="Login Required"
           message="You need to login or register as a jobseeker to apply for this job."
         />
@@ -293,7 +295,7 @@ export default function JobApplicationPage({ params }: { params: { id: string } 
               </form>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Button variant="outline" onClick={() => router.push(`/job/${params.id}`)} disabled={isSubmitting}>
+              <Button variant="outline" onClick={() => router.push(`/job/${jobId}`)} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button

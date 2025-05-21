@@ -4,23 +4,41 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Building2, MapPin, Calendar, DollarSign, ExternalLink } from "lucide-react"
+import { Building2, MapPin, Calendar, PhilippinePeso, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { EmployerRating } from "@/components/employer-rating"
-import { formatDistanceToNow } from "date-fns"
+import { db } from "@/lib/firebase"
+import { doc, getDoc, Timestamp } from "firebase/firestore"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface JobCardProps {
   variant?: "default" | "horizontal"
-  jobId?: string
+  jobId: string
   companyId?: string
   job?: any // The job data from Firestore
 }
 
-export function JobCard({ variant = "default", jobId = "1", companyId = "1", job: jobData }: JobCardProps) {
+interface JobData {
+  id: string
+  title: string
+  company: string
+  companyId: string
+  location: string
+  type: string
+  category: string
+  salary: string
+  postedAt: string | Timestamp
+  deadline: string
+  tags: string[]
+}
+
+export function JobCard({ variant = "default", jobId, companyId }: JobCardProps) {
   const [isJobseeker, setIsJobseeker] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
-  const [job, setJob] = useState<any>(null)
+  const [job, setJob] = useState<JobData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Check if user is jobseeker
   useEffect(() => {
@@ -47,65 +65,114 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
         console.error("Error parsing user data:", error)
       }
     }
+  }, [])
 
-    // Process job data
-    if (jobData) {
-      setJob(jobData)
-    } else {
-      // Fallback to mock data if no job data is provided
-      setJob({
-        id: jobId,
-        title: "Senior Frontend Developer",
-        company: "Tech Solutions Inc.",
-        location: "Marawi City, Lanao del Sur",
-        type: "Full-time",
-        category: "Development",
-        salary: "₱60,000 - ₱80,000",
-        postedAt: "2 days ago",
-        deadline: "30 days remaining",
-        tags: ["React", "TypeScript", "Next.js"],
-      })
+  // Fetch job data from Firestore
+  useEffect(() => {
+    async function fetchJobData() {
+      if (!jobId) {
+        setError("Invalid job ID")
+        setLoading(false)
+        return
+      }
+      
+      setLoading(true)
+      setError(null)
+      
+      try {
+        console.log(`Fetching job with ID: ${jobId}`)
+        const jobDoc = await getDoc(doc(db, "jobs", jobId))
+        
+        if (jobDoc.exists()) {
+          console.log(`Found job: ${jobId}`, jobDoc.data())
+          const jobData = jobDoc.data() as Omit<JobData, "id">
+          
+          // Set default values for potentially missing fields
+          setJob({
+            id: jobId,
+            title: jobData.title || "Untitled Position",
+            company: jobData.company || "Unknown Company",
+            companyId: jobData.companyId || companyId || "",
+            location: jobData.location || "Location not specified",
+            type: jobData.type || "Not specified",
+            category: jobData.category || "",
+            salary: jobData.salary || "Not specified",
+            postedAt: jobData.postedAt || "Recently",
+            deadline: jobData.deadline || "",
+            tags: jobData.tags || []
+          })
+        } else {
+          console.log(`Job not found: ${jobId}`)
+          setError("Job not found")
+        }
+      } catch (err) {
+        console.error(`Error fetching job data for ID ${jobId}:`, err)
+        setError("Failed to load job data")
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [jobData, jobId])
-
-  // Format date and time
-  const formatPostedDate = (timestamp: any) => {
-    if (!timestamp) return "Recently"
     
-    try {
-      // Convert Firestore timestamp to JS Date
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
-      return formatDistanceToNow(date, { addSuffix: true })
-    } catch (error) {
-      console.error("Error formatting date:", error)
-      return "Recently"
-    }
-  }
+    fetchJobData()
+  }, [jobId, companyId])
 
-  // Format salary range
-  const formatSalary = (min: number, max: number) => {
-    if (!min && !max) return "Competitive"
-    if (!min) return `Up to ₱${max.toLocaleString()}`
-    if (!max) return `From ₱${min.toLocaleString()}`
-    return `₱${min.toLocaleString()} - ₱${max.toLocaleString()}`
-  }
-
-  if (!mounted || !job) {
+  if (!mounted) {
     return null
   }
 
-  // Format location
-  const formatLocation = (location: any) => {
-    if (!location) return "Location not specified"
+  // Loading state
+  if (loading) {
+    return (
+      <Card className="overflow-hidden hover:shadow-md transition-shadow">
+        <CardContent className="p-6">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-4 w-2/3" />
+            <div className="flex gap-2 mt-3">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Error state
+  if (error || !job) {
+    return (
+      <Card className="overflow-hidden hover:shadow-md transition-shadow">
+        <CardContent className="p-6">
+          <p className="text-center text-red-500">{error || "Job not available"}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Format the posted date (assuming postedAt is a timestamp from Firestore)
+  const formatPostedDate = (dateValue: string | Timestamp) => {
+    // Check if it's a Firestore timestamp
+    if (dateValue && typeof dateValue === 'object' && 'seconds' in dateValue) {
+      const date = new Date((dateValue as Timestamp).seconds * 1000)
+      const now = new Date()
+      const diffTime = Math.abs(now.getTime() - date.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      
+      if (diffDays < 1) return "Today"
+      if (diffDays === 1) return "Yesterday"
+      if (diffDays < 7) return `${diffDays} days ago`
+      if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+      return `${Math.floor(diffDays / 30)} months ago`
+    }
     
-    if (typeof location === 'string') return location
-    
-    const parts = []
-    if (location.city) parts.push(location.city)
-    if (location.province) parts.push(location.province)
-    if (location.remote) parts.push("Remote")
-    
-    return parts.length > 0 ? parts.join(", ") : "Location not specified"
+    // If it's already a formatted string
+    return dateValue as string
   }
 
   if (variant === "horizontal") {
@@ -128,9 +195,9 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
                   <Building2 className="h-4 w-4 mr-1" />
                   <span>{job.company || job.employerName}</span>
                   <EmployerRating
-                    employerId={companyId || job.employerId}
-                    employerName={job.company || job.employerName}
-                    initialRating={job.employerRating || 0}
+                    employerId={job.companyId || companyId || ""}
+                    employerName={job.company}
+                    initialRating={4.2}
                     showRatingButton={false}
                     size="sm"
                   />
@@ -141,16 +208,16 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
                 </div>
                 <div className="flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
-                  <span>Posted {job.postedAt || formatPostedDate(job.createdAt)}</span>
+                  <span>Posted {formatPostedDate(job.postedAt)}</span>
                 </div>
                 <div className="flex items-center text-green-600 dark:text-green-400 font-medium">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  <span>{job.salary || formatSalary(job.minSalary, job.maxSalary)}</span>
+                  <PhilippinePeso className="h-4 w-4 mr-1" />
+                  <span>{job.salary}</span>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 mb-4">
-                {(job.tags || job.skills || []).map((tag: string) => (
+                {job.tags && job.tags.map((tag) => (
                   <Badge key={tag} variant="secondary" className="bg-gray-100 dark:bg-gray-700">
                     {tag}
                   </Badge>
@@ -165,7 +232,7 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
                   </Button>
                 </Link>
 
-                <Link href={`/employer/${companyId || job.employerId}`}>
+                <Link href={`/employer/${job.companyId || companyId}`}>
                   <Button variant="outline" size="sm" className="gap-1">
                     <ExternalLink className="h-4 w-4" />
                     View Profile
@@ -200,13 +267,13 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
         <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
           <div className="flex items-center gap-1">
             <Building2 className="h-4 w-4 mr-1" />
-            <Link href={`/employer/${companyId || job.employerId}`} className="hover:text-yellow-500">
-              {job.company || job.employerName}
+            <Link href={`/employer/${job.companyId || companyId}`} className="hover:text-yellow-500">
+              {job.company}
             </Link>
             <EmployerRating
-              employerId={companyId || job.employerId}
-              employerName={job.company || job.employerName}
-              initialRating={job.employerRating || 0}
+              employerId={job.companyId || companyId || ""}
+              employerName={job.company}
+              initialRating={4.2}
               showRatingButton={false}
               size="sm"
             />
@@ -216,13 +283,13 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
             <span>{formatLocation(job.location)}</span>
           </div>
           <div className="flex items-center text-green-600 dark:text-green-400 font-medium">
-            <DollarSign className="h-4 w-4 mr-1" />
-            <span>{job.salary || formatSalary(job.minSalary, job.maxSalary)}</span>
+            <PhilippinePeso className="h-4 w-4 mr-1" />
+            <span>{job.salary}</span>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4">
-          {(job.tags || job.skills || []).map((tag: string) => (
+          {job.tags && job.tags.map((tag) => (
             <Badge key={tag} variant="secondary" className="bg-gray-100 dark:bg-gray-700">
               {tag}
             </Badge>
@@ -236,7 +303,7 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1", job
             </Button>
           </Link>
 
-          <Link href={`/employer/${companyId || job.employerId}`}>
+          <Link href={`/employer/${job.companyId || companyId}`}>
             <Button variant="outline" size="sm" className="gap-1">
               View Profile
             </Button>

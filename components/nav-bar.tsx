@@ -3,6 +3,7 @@
 import type React from "react"
 
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { ModeToggle } from "@/components/mode-toggle"
 import { User, LogOut, Menu, X, ChevronDown, Briefcase, Users } from "lucide-react"
@@ -25,7 +26,8 @@ export function NavBar() {
   const [userRole, setUserRole] = useState<string | null>(null)
   const [activeRole, setActiveRole] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
-  const [profile, setprofile] = useState<string | null>(null)
+  const [logo, setLogo] = useState<string | null>(null)
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
   // Fix hydration mismatch by only rendering after mount
@@ -44,18 +46,26 @@ export function NavBar() {
           setUserRole(user.role)
           setActiveRole(user.activeRole || user.role)
           setUserName(user.firstName || user.companyName || user.email)
+          
+          // Set logo and profile photo
+          setLogo(user.logo || null)
+          setProfilePhoto(user.profilePhoto || null)
         } catch (error) {
           console.error("Error parsing user data:", error)
           setIsLoggedIn(false)
           setUserRole(null)
           setActiveRole(null)
           setUserName(null)
+          setLogo(null)
+          setProfilePhoto(null)
         }
       } else {
         setIsLoggedIn(false)
         setUserRole(null)
         setActiveRole(null)
         setUserName(null)
+        setLogo(null)
+        setProfilePhoto(null)
       }
     }
 
@@ -170,7 +180,7 @@ export function NavBar() {
                   Job Map
                 </a>
               )}
-
+          
              
               {/* Show About and Contact only for non-logged in users */}
               {!isLoggedIn && (
@@ -209,8 +219,35 @@ export function NavBar() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="relative flex items-center gap-2 text-gray-300">
                         <div className="h-8 w-8 rounded-full bg-gray-700 flex items-center justify-center">
-
-                          <User className="h-4 w-4" />
+                          {isEmployer && !isMultiRole ? (
+                            logo ? (
+                              <div className="h-6 w-6 relative">
+                                <Image 
+                                  src={logo} 
+                                  alt="Company Logo" 
+                                  fill
+                                  unoptimized={logo.startsWith('data:')}
+                                  className="object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <User className="h-4 w-4" />
+                            )
+                          ) : (
+                            profilePhoto ? (
+                              <div className="h-6 w-6 relative">
+                                <Image 
+                                  src={profilePhoto} 
+                                  alt="Profile Photo" 
+                                  fill
+                                  unoptimized={profilePhoto.startsWith('data:')}
+                                  className="object-cover rounded-full"
+                                />
+                              </div>
+                            ) : (
+                              <User className="h-4 w-4" />
+                            )
+                          )}
                           
                         </div>
                         <span className="max-w-[100px] truncate">{userName}</span>

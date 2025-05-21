@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import React from "react"
 import { JobPostingForm } from "@/components/job-posting-form"
@@ -8,12 +8,13 @@ import { AuthCheckModal } from "@/components/auth-check-modal"
 import { BackButton } from "@/components/back-button"
 import { getJobPosting } from "@/lib/jobs"
 
-type PageParams = {
-  id: string
-}
-
-export default function EditJobPage({ params }: { params: PageParams }) {
+export default function EditJobPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
+  
+  // Properly unwrap the params Promise using React.use()
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
+  
   const [userData, setUserData] = useState<any>(null)
   const [jobData, setJobData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -76,7 +77,7 @@ export default function EditJobPage({ params }: { params: PageParams }) {
         <p className="text-gray-500">Update your job posting information</p>
       </div>
 
-      {jobData && <JobPostingForm initialData={jobData} isEdit={true} />}
+      {jobData && <JobPostingForm initialData={jobData} isEdit={true} userData={userData} />}
 
       <AuthCheckModal
         isOpen={isAuthModalOpen}

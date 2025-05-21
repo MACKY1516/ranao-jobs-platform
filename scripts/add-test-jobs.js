@@ -1,13 +1,27 @@
+<<<<<<< HEAD
 const { initializeApp } = require('firebase/app');
 const { getFirestore, collection, addDoc, serverTimestamp } = require('firebase/firestore');
 const { getAuth, signInWithEmailAndPassword } = require('firebase/auth');
 
 // Your Firebase configuration
+=======
+// Script to add test job data to Firestore
+// Run with: node scripts/add-test-jobs.js
+
+const { initializeApp } = require("firebase/app");
+const { getFirestore, collection, addDoc, Timestamp } = require("firebase/firestore");
+
+// Firebase configuration
+>>>>>>> af4e0320e61042feb46ef4f09888f57fd3d12335
 const firebaseConfig = {
   apiKey: "AIzaSyDxaiAf_pHRfZIyBYLkDZLsodRNCkJqYh0",
   authDomain: "ranaojob.firebaseapp.com",
   projectId: "ranaojob",
+<<<<<<< HEAD
   storageBucket: "ranaojob.firebasestorage.app",
+=======
+  storageBucket: "ranaojob.appspot.com",
+>>>>>>> af4e0320e61042feb46ef4f09888f57fd3d12335
   messagingSenderId: "636345591279",
   appId: "1:636345591279:web:ae61c5efdfe54a2267421a",
   measurementId: "G-06LYFC8YDZ"
@@ -15,6 +29,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+<<<<<<< HEAD
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -115,13 +130,73 @@ async function addTestJobs() {
     for (const job of testJobs) {
       const docRef = await addDoc(collection(db, "jobs"), job);
       console.log(`Added job "${job.title}" with ID: ${docRef.id}`);
+=======
+const db = getFirestore(app);
+
+// Sample test jobs
+const testJobs = [
+  {
+    title: "Frontend Developer",
+    company: "TechCorp",
+    companyId: "techcorp123",
+    location: "Marawi City",
+    type: "Full-time",
+    category: "Technology",
+    salary: "₱25,000 - ₱35,000",
+    postedAt: Timestamp.now(),
+    deadline: "2023-12-31",
+    tags: ["React", "JavaScript", "UI/UX"]
+  },
+  {
+    title: "Marketing Specialist",
+    company: "Global Marketing",
+    companyId: "globalmarketing456",
+    location: "Remote",
+    type: "Part-time",
+    category: "Marketing",
+    salary: "₱20,000 - ₱30,000",
+    postedAt: Timestamp.now(),
+    deadline: "2023-12-20",
+    tags: ["Digital Marketing", "Social Media", "SEO"]
+  },
+  {
+    title: "Project Manager",
+    company: "BuildWell Construction",
+    companyId: "buildwell789",
+    location: "Marawi City",
+    type: "Contract",
+    category: "Construction",
+    salary: "₱40,000 - ₱60,000",
+    postedAt: Timestamp.now(),
+    deadline: "2023-12-15",
+    tags: ["Construction", "Management", "Planning"]
+  }
+];
+
+// Function to add test jobs to Firestore
+async function addTestJobs() {
+  try {
+    console.log("Adding test jobs to Firestore...");
+    
+    for (const job of testJobs) {
+      const docRef = await addDoc(collection(db, "jobs"), job);
+      console.log(`Job added with ID: ${docRef.id}`);
+>>>>>>> af4e0320e61042feb46ef4f09888f57fd3d12335
     }
     
     console.log("All test jobs added successfully!");
   } catch (error) {
+<<<<<<< HEAD
     console.error("Error:", error);
   }
 }
 
 // Run the function
+=======
+    console.error("Error adding test jobs:", error);
+  }
+}
+
+// Execute the function
+>>>>>>> af4e0320e61042feb46ef4f09888f57fd3d12335
 addTestJobs(); 

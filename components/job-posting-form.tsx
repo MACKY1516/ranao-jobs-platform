@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
-import { MapPin, DollarSign, Briefcase, Clock, Calendar, Building } from "lucide-react"
+import { MapPin, PhilippinePeso, Briefcase, Clock, Calendar, Building } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { addJobPosting, updateJobPosting, JobPosting } from "@/lib/jobs"
 import { useToast } from "@/components/ui/use-toast"
@@ -18,6 +18,8 @@ import { addAdminNotification } from "@/lib/notifications"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { InfoIcon } from "lucide-react"
 import { addEmployerActivity } from "@/lib/notifications"
+
+
 
 // Philippine cities with coordinates
 const philippineCities = [
@@ -46,12 +48,13 @@ const philippineCities = [
 interface JobPostingFormProps {
   initialData?: JobPosting;
   isEdit?: boolean;
+  userData?: any;
 }
 
-export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormProps) {
+export function JobPostingForm({ initialData, isEdit = false, userData: userDataProp }: JobPostingFormProps) {
   const router = useRouter()
   const { toast } = useToast()
-  const [userData, setUserData] = useState<any>(null)
+  const [userData, setUserData] = useState<any>(userDataProp || null)
   const [formData, setFormData] = useState({
     title: initialData?.title || "",
     company: initialData?.company || "",
@@ -75,13 +78,32 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Load user data from localStorage
+  // Load user data from localStorage if not provided as prop
   useEffect(() => {
+    // If userData was provided as prop, no need to fetch from localStorage
+    if (userDataProp) {
+      // Still set form data based on user data
+      setFormData(prev => ({
+        ...prev,
+        company: userDataProp.companyName || prev.company,
+        contactEmail: userDataProp.email || prev.contactEmail
+      }))
+      return
+    }
+    
     const storedUser = localStorage.getItem("ranaojobs_user")
     if (storedUser) {
-      setUserData(JSON.parse(storedUser))
+      const userData = JSON.parse(storedUser)
+      setUserData(userData)
+      
+      // Auto-populate company name and contact email from user data
+      setFormData(prev => ({
+        ...prev,
+        company: userData.companyName || prev.company,
+        contactEmail: userData.email || prev.contactEmail
+      }))
     }
-  }, [])
+  }, [userDataProp])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -154,10 +176,15 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
     setIsSubmitting(true)
 
     try {
+      // Get company name from user data or form input
+      const companyName = userData.companyName || formData.company
+      
       const jobData = {
         ...formData,
         employerId: userData.id,
-        companyName: userData.companyName || formData.company,
+        companyName: companyName,
+        // Ensure both fields are set correctly
+        company: companyName,
       }
 
       let jobId: string
@@ -187,7 +214,7 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
         // Create admin notification for new job
         await addAdminNotification(
           "New Job Posted",
-          `${userData.companyName || formData.company} posted a new job: ${formData.title}`,
+          `${companyName} posted a new job: ${formData.title}`,
           "info",
           "all",
           `/admin/jobs/${jobId}`,
@@ -264,8 +291,12 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
                   onChange={handleChange}
                   placeholder="e.g. Tech Solutions Inc."
                   className={errors.company ? "border-red-500" : ""}
+                  readOnly={userData?.companyName ? true : false}
                 />
                 {errors.company && <p className="text-red-500 text-sm">{errors.company}</p>}
+                {userData?.companyName && (
+                  <p className="text-xs text-gray-500">Using company name from your profile</p>
+                )}
               </div>
             </div>
 
@@ -302,7 +333,7 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
 
               <div className="space-y-2">
                 <Label htmlFor="salary" className="flex items-center">
-                  <DollarSign className="mr-1 h-4 w-4 text-gray-500" />
+                  <PhilippinePeso className="mr-1 h-4 w-4 text-gray-500" />
                   Salary Range
                 </Label>
                 <Input
@@ -439,8 +470,12 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
                   onChange={handleChange}
                   placeholder="e.g. careers@company.com"
                   className={errors.contactEmail ? "border-red-500" : ""}
+                  readOnly={userData?.email ? true : false}
                 />
                 {errors.contactEmail && <p className="text-red-500 text-sm">{errors.contactEmail}</p>}
+                {userData?.email && (
+                  <p className="text-xs text-gray-500">Using email from your profile</p>
+                )}
               </div>
             </div>
 
@@ -504,3 +539,5 @@ export function JobPostingForm({ initialData, isEdit = false }: JobPostingFormPr
     </Card>
   )
 }
+
+

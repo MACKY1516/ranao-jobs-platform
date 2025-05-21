@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRouter } from "next/navigation"
+import { db } from "@/lib/firebase"
+import { collection, getDocs, doc } from "firebase/firestore"
 
 // Job interface
 export interface Job {
@@ -39,6 +41,24 @@ export default function JobMapPage() {
   const [locationFilter, setLocationFilter] = useState("")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
+  const [mapZoom, setMapZoom] = useState(10) // Default to regional zoom level
+
+  // Get user's location
+  useEffect(() => {
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords
+          setUserLocation([latitude, longitude])
+        },
+        (error) => {
+          console.error("Error getting user location:", error)
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      )
+    }
+  }, [])
 
   // Check authentication status
   useEffect(() => {
@@ -59,147 +79,109 @@ export default function JobMapPage() {
     }
   }, [router])
 
-  // Fetch jobs from API
+  // Convert street address to coordinates for jobs that only have addresses
+  const geocodeAddress = async (address: string): Promise<[number, number] | null> => {
+    try {
+      // This is a simplified approach - in a production app, you'd use a proper geocoding service
+      // with appropriate rate limiting and error handling
+      
+      // Philippines-specific geocoding approximations for major cities
+      const addressMap: Record<string, [number, number]> = {
+        'manila': [14.5995, 120.9842],
+        'cebu': [10.3157, 123.8854], 
+        'davao': [7.1907, 125.4553],
+        'quezon': [14.6760, 121.0437],
+        'makati': [14.5547, 121.0244],
+        'marawi': [8.0, 124.3],
+        'iligan': [8.2289, 124.2444],
+        'cagayan': [8.4542, 124.6319],
+        'zamboanga': [6.9214, 122.0790]
+      };
+      
+      const lowerAddress = address.toLowerCase();
+      
+      // Check for city matches
+      for (const [city, coords] of Object.entries(addressMap)) {
+        if (lowerAddress.includes(city)) {
+          return coords;
+        }
+      }
+      
+      // Fallback to central Philippines
+      return [12.8797, 121.774];
+    } catch (error) {
+      console.error(`Error geocoding address: ${address}`, error);
+      return null;
+    }
+  };
+
+  // Fetch jobs from Firestore
   useEffect(() => {
     const fetchJobs = async () => {
       try {
         setIsLoading(true)
-        // Mock data for demonstration - Philippines locations
-        const mockJobs: Job[] = [
-          {
-            id: "job1",
-            title: "Frontend Developer",
-            company: "TechCorp Manila",
-            category: "Development",
-            location: "Manila, Philippines",
-            coordinates: [14.5995, 120.9842],
-            salary: "₱30,000 - ₱45,000",
-            type: "Full-time",
-            postedAt: "2023-05-01",
-            deadline: "2023-06-01",
-            description: "We are looking for a skilled Frontend Developer...",
-          },
-          {
-            id: "job2",
-            title: "UX Designer",
-            company: "DesignHub Cebu",
-            category: "Design",
-            location: "Cebu City, Philippines",
-            coordinates: [10.3157, 123.8854],
-            salary: "₱25,000 - ₱40,000",
-            type: "Full-time",
-            postedAt: "2023-05-02",
-            deadline: "2023-06-02",
-            description: "Join our design team to create amazing user experiences...",
-          },
-          {
-            id: "job3",
-            title: "Data Analyst",
-            company: "DataCo Davao",
-            category: "Data Science",
-            location: "Davao City, Philippines",
-            coordinates: [7.1907, 125.4553],
-            salary: "₱28,000 - ₱42,000",
-            type: "Full-time",
-            postedAt: "2023-05-03",
-            deadline: "2023-06-03",
-            description: "Looking for a data analyst to analyze complex datasets...",
-          },
-          {
-            id: "job4",
-            title: "IT Support Specialist",
-            company: "CloudTech Iloilo",
-            category: "IT Support",
-            location: "Iloilo City, Philippines",
-            coordinates: [10.7202, 122.5621],
-            salary: "₱22,000 - ₱35,000",
-            type: "Full-time",
-            postedAt: "2023-05-04",
-            deadline: "2023-06-04",
-            description: "Join our IT support team to help clients with technical issues...",
-          },
-          {
-            id: "job5",
-            title: "Marketing Coordinator",
-            company: "GrowthCo Marawi",
-            category: "Marketing",
-            location: "Marawi City, Philippines",
-            coordinates: [8.0, 124.3],
-            salary: "₱20,000 - ₱30,000",
-            type: "Full-time",
-            postedAt: "2023-05-05",
-            deadline: "2023-06-05",
-            description: "Lead our marketing efforts to drive growth...",
-          },
-          {
-            id: "job6",
-            title: "Administrative Assistant",
-            company: "AdminPro Baguio",
-            category: "Administrative",
-            location: "Baguio City, Philippines",
-            coordinates: [16.4023, 120.596],
-            salary: "₱18,000 - ₱25,000",
-            type: "Full-time",
-            postedAt: "2023-05-06",
-            deadline: "2023-06-06",
-            description: "Support our office operations with administrative tasks...",
-          },
-          {
-            id: "job7",
-            title: "Customer Service Representative",
-            company: "ServiceFirst Cagayan de Oro",
-            category: "Customer Service",
-            location: "Cagayan de Oro, Philippines",
-            coordinates: [8.4542, 124.6319],
-            salary: "₱19,000 - ₱28,000",
-            type: "Full-time",
-            postedAt: "2023-05-07",
-            deadline: "2023-06-07",
-            description: "Provide excellent customer service to our clients...",
-          },
-          {
-            id: "job8",
-            title: "Software Engineer",
-            company: "CodeMasters Quezon City",
-            category: "Development",
-            location: "Quezon City, Philippines",
-            coordinates: [14.676, 121.0437],
-            salary: "₱35,000 - ₱50,000",
-            type: "Full-time",
-            postedAt: "2023-05-08",
-            deadline: "2023-06-08",
-            description: "Develop high-quality software solutions...",
-          },
-          {
-            id: "job9",
-            title: "Graphic Designer",
-            company: "Creative Studios Makati",
-            category: "Design",
-            location: "Makati, Philippines",
-            coordinates: [14.5547, 121.0244],
-            salary: "₱25,000 - ₱38,000",
-            type: "Full-time",
-            postedAt: "2023-05-09",
-            deadline: "2023-06-09",
-            description: "Create stunning visual designs for our clients...",
-          },
-          {
-            id: "job10",
-            title: "Project Manager",
-            company: "BuildRight Zamboanga",
-            category: "Management",
-            location: "Zamboanga City, Philippines",
-            coordinates: [6.9214, 122.079],
-            salary: "₱40,000 - ₱60,000",
-            type: "Full-time",
-            postedAt: "2023-05-10",
-            deadline: "2023-06-10",
-            description: "Lead project teams to successful delivery...",
-          },
-        ]
-
-        setJobs(mockJobs)
-        setFilteredJobs(mockJobs)
+        
+        // Get jobs from Firestore
+        const jobsCollection = collection(db, "jobs")
+        const jobsSnapshot = await getDocs(jobsCollection)
+        
+        if (jobsSnapshot.empty) {
+          setError("No jobs found in the database.")
+          setJobs([])
+          setFilteredJobs([])
+          setIsLoading(false)
+          return
+        }
+        
+        // Process job data and add coordinates if needed
+        const jobsList: Job[] = [];
+        
+        for (const doc of jobsSnapshot.docs) {
+          const jobData = doc.data();
+          
+          // Skip jobs without necessary data
+          if (!jobData.title || !jobData.company || !jobData.location) {
+            console.warn(`Job ${doc.id} missing required fields, skipping`);
+            continue;
+          }
+          
+          // Create base job object
+          const job: any = {
+            id: doc.id,
+            title: jobData.title,
+            company: jobData.company,
+            category: jobData.category || "General",
+            location: jobData.location,
+            type: jobData.type || "Full-time",
+            salary: jobData.salary,
+            postedAt: jobData.postedAt?.toDate?.() || new Date().toISOString(),
+            deadline: jobData.deadline,
+            description: jobData.description
+          };
+          
+          // Handle coordinates: use existing or geocode from location
+          if (jobData.coordinates && 
+              Array.isArray(jobData.coordinates) && 
+              jobData.coordinates.length === 2) {
+            
+            job.coordinates = jobData.coordinates;
+          } else {
+            // Geocode the location to get coordinates
+            const coords = await geocodeAddress(jobData.location);
+            if (coords) {
+              job.coordinates = coords;
+            } else {
+              // Skip jobs that can't be mapped
+              console.warn(`Could not geocode location for job ${doc.id}, skipping`);
+              continue;
+            }
+          }
+          
+          jobsList.push(job as Job);
+        }
+        
+        setJobs(jobsList)
+        setFilteredJobs(jobsList)
         setIsLoading(false)
       } catch (err) {
         console.error("Error fetching jobs:", err)
@@ -225,11 +207,11 @@ export default function JobMapPage() {
       )
     }
 
-    if (categoryFilter) {
+    if (categoryFilter && categoryFilter !== "all") {
       result = result.filter((job) => job.category === categoryFilter)
     }
 
-    if (locationFilter) {
+    if (locationFilter && locationFilter !== "all") {
       result = result.filter((job) => job.location.includes(locationFilter))
     }
 
@@ -237,8 +219,11 @@ export default function JobMapPage() {
   }, [jobs, searchTerm, categoryFilter, locationFilter])
 
   // Get unique categories and locations for filters
-  const categories = [...new Set(jobs.map((job) => job.category))]
-  const locations = [...new Set(jobs.map((job) => job.location.split(",")[0].trim()))]
+  const categories = [...new Set(jobs.map((job) => job.category).filter(Boolean))]
+  const locations = [...new Set(jobs.map((job) => {
+    const parts = job.location.split(",");
+    return parts.length > 0 ? parts[0].trim() : job.location;
+  }))]
 
   // If user is an employer, redirect to find-jobs
   if (isLoggedIn && userRole === "employer") {
@@ -335,7 +320,12 @@ export default function JobMapPage() {
             </div>
           ) : (
             <div className="w-full h-[calc(100vh-240px)] rounded-lg overflow-hidden shadow-lg">
-              <JobMap jobs={filteredJobs} height="100%" />
+              <JobMap 
+                jobs={filteredJobs} 
+                height="100%" 
+                initialCenter={userLocation || undefined}
+                initialZoom={mapZoom}
+              />
             </div>
           )}
         </div>
