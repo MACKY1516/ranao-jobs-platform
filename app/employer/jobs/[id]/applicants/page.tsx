@@ -1,12 +1,15 @@
 "use client"
 
+import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ApplicantList } from "@/components/applicant-list"
 import { AuthCheckModal } from "@/components/auth-check-modal"
 import { BackButton } from "@/components/back-button"
 
-export default function JobApplicantsPage({ params }: { params: { id: string } }) {
+export default function JobApplicantsPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
   const router = useRouter()
   const [userData, setUserData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -44,8 +47,8 @@ export default function JobApplicantsPage({ params }: { params: { id: string } }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <BackButton href={`/employer/jobs/${params.id}`} className="mb-6" />
-      <ApplicantList jobId={params.id} />
+      <BackButton href={`/employer/jobs/${jobId}`} className="mb-6" />
+      <ApplicantList jobId={jobId} />
 
       <AuthCheckModal
         isOpen={isAuthModalOpen}

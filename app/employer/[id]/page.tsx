@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { NavBar } from "@/components/nav-bar"
@@ -21,7 +22,9 @@ async function fetchEmployerById(id: string) {
   return null;
 }
 
-export default function EmployerProfilePage({ params }: { params: { id: string } }) {
+export default function EmployerProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const employerId = unwrappedParams.id
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [userRole, setUserRole] = useState<string | null>(null)
@@ -47,10 +50,8 @@ export default function EmployerProfilePage({ params }: { params: { id: string }
   }, [])
 
   useEffect(() => {
-    // Fetch employer data here (replace with your actual fetch logic)
-    // Example:
-    fetchEmployerById(params.id).then(data => setEmployer(data));
-  }, [params.id])
+    fetchEmployerById(employerId).then(data => setEmployer(data));
+  }, [employerId])
 
   useEffect(() => {
     if (!employer?.id) return;

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,9 +10,14 @@ import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
 import Link from "next/link"
 import Image from "next/image"
+import { db } from "@/lib/firebase"
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Home() {
   const router = useRouter()
+  const [featuredJobs, setFeaturedJobs] = useState<{id: string}[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     // Check if user is logged in and redirect to appropriate dashboard
@@ -28,6 +33,28 @@ export default function Home() {
       }
     }
   }, [router])
+
+  // Fetch featured jobs
+  useEffect(() => {
+    const fetchFeaturedJobs = async () => {
+      setIsLoading(true)
+      try {
+        // Get all jobs from the collection without any filtering
+        const jobsCollection = collection(db, "jobs")
+        const jobsSnapshot = await getDocs(jobsCollection)
+        
+        // Extract job IDs - we'll limit to 6 for the home page
+        const jobs = jobsSnapshot.docs.map(doc => ({ id: doc.id }))
+        setFeaturedJobs(jobs.slice(0, 6)) // Only take up to 6 jobs
+      } catch (error) {
+        console.error("Error fetching featured jobs:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchFeaturedJobs()
+  }, [])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -66,7 +93,7 @@ export default function Home() {
                 <Button
                   key={category}
                   variant="outline"
-                  className="rounded-full border-gray-700 text-gray-300 hover:bg-gray-800"
+                  className="rounded-full border-gray-700 text-gray-600 hover:bg-yellow-500 "
                 >
                   {category}
                 </Button>
@@ -108,11 +135,34 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <JobCard key={i} jobId={`${i + 1}`} />
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg p-6 shadow-sm">
+                  <Skeleton className="h-6 w-3/4 mb-4" />
+                  <Skeleton className="h-4 w-1/2 mb-2" />
+                  <Skeleton className="h-4 w-1/3 mb-2" />
+                  <Skeleton className="h-4 w-2/3 mb-4" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-8 w-24" />
+                    <Skeleton className="h-8 w-24" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featuredJobs.length > 0 ? (
+                featuredJobs.map((job) => (
+                  <JobCard key={job.id} jobId={job.id} />
+                ))
+              ) : (
+                <div className="col-span-3 text-center p-10 bg-white rounded-lg shadow">
+                  <p className="text-gray-500">No jobs available at the moment. Check back soon!</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-12 text-center">
             <Link href="/find-jobs">

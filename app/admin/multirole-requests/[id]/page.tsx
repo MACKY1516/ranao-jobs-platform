@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { AdminLayout } from "@/components/admin-layout"
@@ -39,9 +40,10 @@ interface UserData {
   multiRoleRejectionReason?: string
 }
 
-export default function MultiRoleRequestDetailPage({ params }: { params: { id: string } }) {
+export default function MultiRoleRequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const userId = unwrappedParams.id
   const router = useRouter()
-  const userId = params.id
   const { success, error } = useAdminToast()
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)

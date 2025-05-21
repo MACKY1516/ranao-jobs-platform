@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { AdminLayout } from "@/components/admin-layout"
@@ -71,7 +72,8 @@ interface UserData {
   rejectionReason?: string
 }
 
-export default function VerificationDetailsPage({ params }: { params: { id: string } }) {
+export default function VerificationDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
   const router = useRouter()
   const { success, error } = useAdminToast()
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
@@ -82,7 +84,7 @@ export default function VerificationDetailsPage({ params }: { params: { id: stri
   const [documents, setDocuments] = useState<{name: string, type: string, url: string, uploadedAt: string}[]>([])
 
   // Store employerId separately to fix the Next.js warning
-  const employerId = params.id
+  const employerId = unwrappedParams.id
   
   // Fetch user data from Firestore
   useEffect(() => {

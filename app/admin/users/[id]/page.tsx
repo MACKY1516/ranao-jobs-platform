@@ -60,7 +60,8 @@ interface UserData {
   }>
 }
 
-export default function UserProfilePage({ params }: { params: { id: string } }) {
+export default function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
   const router = useRouter()
   const { success, error } = useAdminToast()
   const [isLoading, setIsLoading] = useState(true)
@@ -76,7 +77,7 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
   const [isSubmittingNote, setIsSubmittingNote] = useState(false)
   
   // Access params directly in client components
-  const userId = params.id
+  const userId = unwrappedParams.id
   
   // Fetch user data from Firestore
   useEffect(() => {

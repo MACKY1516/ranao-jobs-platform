@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Briefcase, MapPin, DollarSign, Search, Edit, Trash2, Clock } from "lucide-react"
+import { Briefcase, MapPin, PhilippinePeso, Search, Edit, Trash2, Clock } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export interface SavedSearch {
@@ -233,7 +233,7 @@ export function SavedSearches({ className }: SavedSearchesProps) {
                   variant="outline"
                   className="bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300"
                 >
-                  <DollarSign className="h-3 w-3 mr-1" />
+                  <PhilippinePeso className="h-3 w-3 mr-1" />
                   {search.filters.salary}
                 </Badge>
               )}

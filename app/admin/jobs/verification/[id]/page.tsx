@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { AdminLayout } from "@/components/admin-layout"
@@ -14,7 +15,7 @@ import {
   Clock, 
   Briefcase, 
   CalendarDays, 
-  DollarSign, 
+  PhilippinePeso, 
   CheckCircle, 
   XCircle, 
   ArrowLeft,
@@ -66,9 +67,10 @@ interface EmployerData {
   logo?: string
 }
 
-export default function JobVerificationDetailPage({ params }: { params: { id: string } }) {
+export default function JobVerificationPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
   const router = useRouter()
-  const jobId = params.id
   const { success, error } = useAdminToast()
   const [jobData, setJobData] = useState<JobData | null>(null)
   const [employerData, setEmployerData] = useState<EmployerData | null>(null)
@@ -362,7 +364,7 @@ export default function JobVerificationDetailPage({ params }: { params: { id: st
                 </div>
 
                 <div className="flex items-center gap-1">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
+                  <PhilippinePeso className="h-4 w-4 text-gray-400" />
                   <span className="text-sm">
                     {jobData?.salary?.min && jobData?.salary?.max 
                       ? `${jobData.salary.currency || '$'}${jobData.salary.min.toLocaleString()} - ${jobData.salary.currency || '$'}${jobData.salary.max.toLocaleString()} ${jobData.salary.period || 'per year'}`
