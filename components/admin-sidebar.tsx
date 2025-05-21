@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import { Users, Briefcase, FileCheck, Building2, BarChart2, Settings, LogOut, X, Home, Activity, UserPlus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { recordActivity } from "@/lib/activity-logger"
 
 interface AdminSidebarProps {
   isOpen?: boolean
@@ -22,7 +23,22 @@ export function AdminSidebar({ isOpen = false, setIsOpen, currentPath = "" }: Ad
     setMounted(true)
   }, [])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const userData = localStorage.getItem("ranaojobs_user")
+    if (userData) {
+      const user = JSON.parse(userData)
+      // Record logout activity before clearing data
+      await recordActivity(
+        user.id,
+        "logout",
+        "Admin logged out",
+        {
+          role: user.role,
+          email: user.email
+        }
+      )
+    }
+
     localStorage.removeItem("ranaojobs_user")
     window.dispatchEvent(new Event("userStateChange"))
     router.push("/")

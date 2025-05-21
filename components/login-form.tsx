@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { auth, db } from "@/lib/firebase"
 import { doc, getDoc } from "firebase/firestore"
+import { recordActivity } from "@/lib/activity-logger"
+import { addEmployerActivity } from "@/lib/notifications"
 
 interface LoginFormProps {
   onRegisterClick?: () => void
@@ -63,11 +65,27 @@ export function LoginForm({ onRegisterClick, onLoginSuccess }: LoginFormProps) {
       const userDataForStorage = {
         id: user.uid,
         email: user.email,
+        role: userData.role,
+        firstName: userData.firstName || "",
+        lastName: userData.lastName || "",
+        activeRole: userData.activeRole || userData.role,
         ...userData,
       }
       
       // Store user data in local storage
       localStorage.setItem("ranaojobs_user", JSON.stringify(userDataForStorage))
+
+      // Record login activity
+      await recordActivity(
+        user.uid,
+        "login",
+        `${userData.role === "employer" ? "Employer" : userData.role === "jobseeker" ? "Jobseeker" : "User"} logged in`,
+        {
+          role: userData.role,
+          activeRole: userData.activeRole || userData.role,
+          email: user.email
+        }
+      );
 
       // Dispatch custom event to notify other components
       window.dispatchEvent(new Event("userStateChange"))

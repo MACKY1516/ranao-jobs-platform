@@ -11,8 +11,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { NotificationDropdown } from "@/components/notification-dropdown"
+import { JobseekerNotificationDropdown } from "@/components/jobseeker-notification-dropdown"
 import { AuthModal } from "@/components/auth-modal"
 import { RoleSwitcher } from "@/components/role-switcher"
+import { recordActivity } from "@/lib/activity-logger"
 
 export function NavBar() {
   const router = useRouter()
@@ -92,7 +94,23 @@ export function NavBar() {
     setAuthModalOpen(true)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const userData = localStorage.getItem("ranaojobs_user")
+    if (userData) {
+      const user = JSON.parse(userData)
+      // Record logout activity before clearing data
+      await recordActivity(
+        user.id,
+        "logout",
+        `${user.role === "employer" ? "Employer" : user.role === "jobseeker" ? "Jobseeker" : "User"} logged out`,
+        {
+          role: user.role,
+          activeRole: user.activeRole || user.role,
+          email: user.email
+        }
+      )
+    }
+
     localStorage.removeItem("ranaojobs_user")
     setIsLoggedIn(false)
     setUserRole(null)
@@ -190,8 +208,8 @@ export function NavBar() {
                   {/* Role Switcher for multi-role accounts */}
                   {isMultiRole && <RoleSwitcher />}
 
-                  {/* Notifications */}
-                  <NotificationDropdown />
+                  {/* Notifications - use the right component based on role */}
+                  {isEmployer ? <NotificationDropdown /> : isJobseeker ? <JobseekerNotificationDropdown /> : null}
 
                   {/* Theme Toggle */}
                   <ModeToggle />
@@ -297,7 +315,9 @@ export function NavBar() {
               {/* Role Switcher for multi-role accounts */}
               {isLoggedIn && isMultiRole && <RoleSwitcher />}
 
-              {isLoggedIn && <NotificationDropdown />}
+              {/* Notifications for mobile */}
+              {isLoggedIn && (isEmployer ? <NotificationDropdown /> : isJobseeker ? <JobseekerNotificationDropdown /> : null)}
+              
               <ModeToggle />
               <button className="text-white" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">
                 {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
