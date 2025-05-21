@@ -2,17 +2,23 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import React from "react"
 import { JobPostingForm } from "@/components/job-posting-form"
 import { AuthCheckModal } from "@/components/auth-check-modal"
 import { BackButton } from "@/components/back-button"
 import { getJobPosting } from "@/lib/jobs"
 
-export default function EditJobPage({ params }: { params: { id: string } }) {
+type PageParams = {
+  id: string
+}
+
+export default function EditJobPage({ params }: { params: PageParams }) {
   const router = useRouter()
   const [userData, setUserData] = useState<any>(null)
   const [jobData, setJobData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const jobId = params.id
 
   useEffect(() => {
     // Check if user is logged in
@@ -41,7 +47,7 @@ export default function EditJobPage({ params }: { params: { id: string } }) {
     // Fetch job data for editing from Firestore
     const fetchJob = async () => {
       try {
-        const job = await getJobPosting(params.id)
+        const job = await getJobPosting(jobId)
         if (job) {
           setJobData(job)
         } else {
@@ -56,7 +62,7 @@ export default function EditJobPage({ params }: { params: { id: string } }) {
     }
 
     fetchJob()
-  }, [router, params.id])
+  }, [router, jobId])
 
   if (isLoading && !isAuthModalOpen) {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>
@@ -65,7 +71,7 @@ export default function EditJobPage({ params }: { params: { id: string } }) {
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
       <div className="mb-6">
-        <BackButton href={`/employer/jobs/${params.id}`} className="mb-4" />
+        <BackButton href={`/employer/jobs/${jobId}`} className="mb-4" />
         <h1 className="text-2xl font-bold">Edit Job Listing</h1>
         <p className="text-gray-500">Update your job posting information</p>
       </div>

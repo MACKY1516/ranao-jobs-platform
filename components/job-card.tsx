@@ -7,17 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Building2, MapPin, Calendar, DollarSign, ExternalLink } from "lucide-react"
 import Link from "next/link"
 import { EmployerRating } from "@/components/employer-rating"
+import { formatDistanceToNow } from "date-fns"
 
 interface JobCardProps {
   variant?: "default" | "horizontal"
   jobId?: string
   companyId?: string
+  job?: any // The job data from Firestore
 }
 
-export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: JobCardProps) {
+export function JobCard({ variant = "default", jobId = "1", companyId = "1", job: jobData }: JobCardProps) {
   const [isJobseeker, setIsJobseeker] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [job, setJob] = useState<any>(null)
 
   // Check if user is jobseeker
   useEffect(() => {
@@ -44,24 +47,65 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: J
         console.error("Error parsing user data:", error)
       }
     }
-  }, [])
 
-  // Mock job data
-  const job = {
-    id: jobId,
-    title: "Senior Frontend Developer",
-    company: "Tech Solutions Inc.",
-    location: "Marawi City, Lanao del Sur",
-    type: "Full-time",
-    category: "Development",
-    salary: "₱60,000 - ₱80,000",
-    postedAt: "2 days ago",
-    deadline: "30 days remaining",
-    tags: ["React", "TypeScript", "Next.js"],
+    // Process job data
+    if (jobData) {
+      setJob(jobData)
+    } else {
+      // Fallback to mock data if no job data is provided
+      setJob({
+        id: jobId,
+        title: "Senior Frontend Developer",
+        company: "Tech Solutions Inc.",
+        location: "Marawi City, Lanao del Sur",
+        type: "Full-time",
+        category: "Development",
+        salary: "₱60,000 - ₱80,000",
+        postedAt: "2 days ago",
+        deadline: "30 days remaining",
+        tags: ["React", "TypeScript", "Next.js"],
+      })
+    }
+  }, [jobData, jobId])
+
+  // Format date and time
+  const formatPostedDate = (timestamp: any) => {
+    if (!timestamp) return "Recently"
+    
+    try {
+      // Convert Firestore timestamp to JS Date
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+      return formatDistanceToNow(date, { addSuffix: true })
+    } catch (error) {
+      console.error("Error formatting date:", error)
+      return "Recently"
+    }
   }
 
-  if (!mounted) {
+  // Format salary range
+  const formatSalary = (min: number, max: number) => {
+    if (!min && !max) return "Competitive"
+    if (!min) return `Up to ₱${max.toLocaleString()}`
+    if (!max) return `From ₱${min.toLocaleString()}`
+    return `₱${min.toLocaleString()} - ₱${max.toLocaleString()}`
+  }
+
+  if (!mounted || !job) {
     return null
+  }
+
+  // Format location
+  const formatLocation = (location: any) => {
+    if (!location) return "Location not specified"
+    
+    if (typeof location === 'string') return location
+    
+    const parts = []
+    if (location.city) parts.push(location.city)
+    if (location.province) parts.push(location.province)
+    if (location.remote) parts.push("Remote")
+    
+    return parts.length > 0 ? parts.join(", ") : "Location not specified"
   }
 
   if (variant === "horizontal") {
@@ -75,38 +119,38 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: J
                   <Link href={`/job/${job.id}`}>{job.title}</Link>
                 </h3>
                 <Badge variant="outline" className="w-fit">
-                  {job.type}
+                  {job.type || "Full-time"}
                 </Badge>
               </div>
 
               <div className="flex flex-wrap gap-y-2 gap-x-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
                 <div className="flex items-center gap-1">
                   <Building2 className="h-4 w-4 mr-1" />
-                  <span>{job.company}</span>
+                  <span>{job.company || job.employerName}</span>
                   <EmployerRating
-                    employerId={companyId}
-                    employerName={job.company}
-                    initialRating={4.2}
+                    employerId={companyId || job.employerId}
+                    employerName={job.company || job.employerName}
+                    initialRating={job.employerRating || 0}
                     showRatingButton={false}
                     size="sm"
                   />
                 </div>
                 <div className="flex items-center">
                   <MapPin className="h-4 w-4 mr-1" />
-                  <span>{job.location}</span>
+                  <span>{formatLocation(job.location)}</span>
                 </div>
                 <div className="flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
-                  <span>Posted {job.postedAt}</span>
+                  <span>Posted {job.postedAt || formatPostedDate(job.createdAt)}</span>
                 </div>
                 <div className="flex items-center text-green-600 dark:text-green-400 font-medium">
                   <DollarSign className="h-4 w-4 mr-1" />
-                  <span>{job.salary}</span>
+                  <span>{job.salary || formatSalary(job.minSalary, job.maxSalary)}</span>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 mb-4">
-                {job.tags.map((tag) => (
+                {(job.tags || job.skills || []).map((tag: string) => (
                   <Badge key={tag} variant="secondary" className="bg-gray-100 dark:bg-gray-700">
                     {tag}
                   </Badge>
@@ -121,7 +165,7 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: J
                   </Button>
                 </Link>
 
-                <Link href={`/employer/${companyId}`}>
+                <Link href={`/employer/${companyId || job.employerId}`}>
                   <Button variant="outline" size="sm" className="gap-1">
                     <ExternalLink className="h-4 w-4" />
                     View Profile
@@ -150,35 +194,35 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: J
           <h3 className="text-lg font-semibold hover:text-yellow-500 transition-colors">
             <Link href={`/job/${job.id}`}>{job.title}</Link>
           </h3>
-          <Badge variant="outline">{job.type}</Badge>
+          <Badge variant="outline">{job.type || "Full-time"}</Badge>
         </div>
 
         <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
           <div className="flex items-center gap-1">
             <Building2 className="h-4 w-4 mr-1" />
-            <Link href={`/employer/${companyId}`} className="hover:text-yellow-500">
-              {job.company}
+            <Link href={`/employer/${companyId || job.employerId}`} className="hover:text-yellow-500">
+              {job.company || job.employerName}
             </Link>
             <EmployerRating
-              employerId={companyId}
-              employerName={job.company}
-              initialRating={4.2}
+              employerId={companyId || job.employerId}
+              employerName={job.company || job.employerName}
+              initialRating={job.employerRating || 0}
               showRatingButton={false}
               size="sm"
             />
           </div>
           <div className="flex items-center">
             <MapPin className="h-4 w-4 mr-1" />
-            <span>{job.location}</span>
+            <span>{formatLocation(job.location)}</span>
           </div>
           <div className="flex items-center text-green-600 dark:text-green-400 font-medium">
             <DollarSign className="h-4 w-4 mr-1" />
-            <span>{job.salary}</span>
+            <span>{job.salary || formatSalary(job.minSalary, job.maxSalary)}</span>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4">
-          {job.tags.map((tag) => (
+          {(job.tags || job.skills || []).map((tag: string) => (
             <Badge key={tag} variant="secondary" className="bg-gray-100 dark:bg-gray-700">
               {tag}
             </Badge>
@@ -192,14 +236,16 @@ export function JobCard({ variant = "default", jobId = "1", companyId = "1" }: J
             </Button>
           </Link>
 
-          <Link href={`/employer/${companyId}`}>
+          <Link href={`/employer/${companyId || job.employerId}`}>
             <Button variant="outline" size="sm" className="gap-1">
               View Profile
             </Button>
           </Link>
 
           {userRole !== "employer" && (
-            <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">Apply Now</Button>
+            <Link href={`/job/${job.id}/apply`}>
+              <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">Apply Now</Button>
+            </Link>
           )}
         </div>
       </CardContent>

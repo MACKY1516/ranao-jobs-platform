@@ -39,6 +39,19 @@ import {
 } from 'recharts'
 import { format, startOfDay, subDays, subMonths, subYears } from 'date-fns'
 
+// Define interfaces for chart data
+interface ChartDataPoint {
+  name: string;
+  value: number;
+}
+
+interface UserTypeCounts {
+  jobseeker: number;
+  employer: number;
+  multi: number;
+  admin: number;
+}
+
 export default function ReportsPage() {
   const { error } = useAdminToast()
   const [isLoading, setIsLoading] = useState(true)
@@ -57,7 +70,21 @@ export default function ReportsPage() {
   })
 
   // Chart data state
-  const [chartData, setChartData] = useState({
+  const [chartData, setChartData] = useState<{
+    userGrowthData: { name: string; users: number }[];
+    jobCategoriesData: ChartDataPoint[];
+    userTypesData: ChartDataPoint[];
+    userLocationsData: ChartDataPoint[];
+    userActivityData: any[];
+    jobPostingTrendData: { name: string; jobs: number }[];
+    jobCategoriesChartData: ChartDataPoint[];
+    jobTypesData: ChartDataPoint[];
+    salaryRangesData: any[];
+    applicationTrendData: { name: string; users: number }[];
+    applicationStatusData: ChartDataPoint[];
+    popularJobCategoriesData: ChartDataPoint[];
+    responseTimeData: any[];
+  }>({
     userGrowthData: [],
     jobCategoriesData: [],
     userTypesData: [],
@@ -73,6 +100,15 @@ export default function ReportsPage() {
     responseTimeData: []
   })
   
+  // Helper function to format Firestore timestamps
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return null;
+    if (timestamp instanceof Date) return timestamp.toISOString();
+    if (timestamp?.toDate) return timestamp.toDate().toISOString();
+    if (typeof timestamp === 'string') return timestamp;
+    return null;
+  };
+
   // Load data based on selected time period
   useEffect(() => {
     const fetchStats = async () => {
@@ -131,11 +167,43 @@ export default function ReportsPage() {
         const userGrowth = previousNewUsers > 0
           ? Math.round(((newUsers - previousNewUsers) / previousNewUsers) * 100)
           : newUsers > 0 ? 100 : 0
+
+        // Format user data to handle timestamps
+        const formatUserData = (doc: any) => {
+          const data = doc.data()
+          return {
+            ...data,
+            createdAt: formatTimestamp(data.createdAt),
+            updatedAt: formatTimestamp(data.updatedAt)
+          }
+        }
+
+        // Format job data to handle timestamps
+        const formatJobData = (doc: any) => {
+          const data = doc.data()
+          return {
+            ...data,
+            createdAt: formatTimestamp(data.createdAt),
+            updatedAt: formatTimestamp(data.updatedAt)
+          }
+        }
+
+        // Format application data to handle timestamps
+        const formatApplicationData = (doc: any) => {
+          const data = doc.data()
+          return {
+            ...data,
+            appliedAt: formatTimestamp(data.appliedAt),
+            createdAt: formatTimestamp(data.createdAt),
+            updatedAt: formatTimestamp(data.updatedAt)
+          }
+        }
         
         // Get active job listings and calculate growth
         const jobsQuery = query(
           collection(db, "jobs"),
-          where("isActive", "==", true)
+          where("isActive", "==", true),
+          where("verificationStatus", "==", "approved")
         )
         const jobsSnapshot = await getDocs(jobsQuery)
         const activeJobs = jobsSnapshot.size
@@ -143,7 +211,8 @@ export default function ReportsPage() {
         const newJobsQuery = query(
           collection(db, "jobs"),
           where("createdAt", ">=", startTimestamp),
-          where("isActive", "==", true)
+          where("isActive", "==", true),
+          where("verificationStatus", "==", "approved")
         )
         const newJobsSnapshot = await getDocs(newJobsQuery)
         const newJobs = newJobsSnapshot.size
@@ -152,7 +221,8 @@ export default function ReportsPage() {
           collection(db, "jobs"),
           where("createdAt", ">=", previousStartTimestamp),
           where("createdAt", "<", startTimestamp),
-          where("isActive", "==", true)
+          where("isActive", "==", true),
+          where("verificationStatus", "==", "approved")
         )
         const previousNewJobsSnapshot = await getDocs(previousNewJobsQuery)
         const previousNewJobs = previousNewJobsSnapshot.size
@@ -162,20 +232,21 @@ export default function ReportsPage() {
           : newJobs > 0 ? 100 : 0
         
         // Get applications and calculate growth
-        const applicationsSnapshot = await getDocs(collection(db, "applications"))
+        const applicationsQuery = query(collection(db, "applications"))
+        const applicationsSnapshot = await getDocs(applicationsQuery)
         const totalApplications = applicationsSnapshot.size
         
         const newApplicationsQuery = query(
           collection(db, "applications"),
-          where("createdAt", ">=", startTimestamp)
+          where("appliedAt", ">=", startTimestamp)
         )
         const newApplicationsSnapshot = await getDocs(newApplicationsQuery)
         const newApplications = newApplicationsSnapshot.size
         
         const previousApplicationsQuery = query(
           collection(db, "applications"),
-          where("createdAt", ">=", previousStartTimestamp),
-          where("createdAt", "<", startTimestamp)
+          where("appliedAt", ">=", previousStartTimestamp),
+          where("appliedAt", "<", startTimestamp)
         )
         const previousApplicationsSnapshot = await getDocs(previousApplicationsQuery)
         const previousApplications = previousApplicationsSnapshot.size
@@ -188,7 +259,7 @@ export default function ReportsPage() {
         const employersQuery = query(
           collection(db, "users"),
           where("role", "in", ["employer", "multi"]),
-          where("businessPermitUrl", "!=", null)
+          where("isVerified", "==", true)
         )
         const employersSnapshot = await getDocs(employersQuery)
         const verifications = employersSnapshot.size
@@ -196,7 +267,7 @@ export default function ReportsPage() {
         const newVerificationsQuery = query(
           collection(db, "users"),
           where("role", "in", ["employer", "multi"]),
-          where("businessPermitUrl", "!=", null),
+          where("isVerified", "==", true),
           where("updatedAt", ">=", startTimestamp)
         )
         const newVerificationsSnapshot = await getDocs(newVerificationsQuery)
@@ -205,7 +276,7 @@ export default function ReportsPage() {
         const previousVerificationsQuery = query(
           collection(db, "users"),
           where("role", "in", ["employer", "multi"]),
-          where("businessPermitUrl", "!=", null),
+          where("isVerified", "==", true),
           where("updatedAt", ">=", previousStartTimestamp),
           where("updatedAt", "<", startTimestamp)
         )
@@ -248,41 +319,41 @@ export default function ReportsPage() {
         }
 
         // Job categories distribution
-        const categoryCounts = {}
+        const categoryCounts: Record<string, number> = {}
         jobsSnapshot.docs.forEach(doc => {
-          const job = doc.data()
+          const job = formatJobData(doc)
           const category = job.category || 'Uncategorized'
           categoryCounts[category] = (categoryCounts[category] || 0) + 1
         })
         
-        const jobCategoriesData = Object.entries(categoryCounts)
+        const jobCategoriesData: ChartDataPoint[] = Object.entries(categoryCounts)
           .map(([category, count]) => ({ name: category, value: count }))
           .sort((a, b) => b.value - a.value)
           .slice(0, 5) // Top 5 categories
 
         // User types data
-        const userTypes = { jobseeker: 0, employer: 0, multi: 0, admin: 0 }
+        const userTypes: UserTypeCounts = { jobseeker: 0, employer: 0, multi: 0, admin: 0 }
         usersSnapshot.docs.forEach(doc => {
-          const user = doc.data()
+          const user = formatUserData(doc)
           const role = user.role || 'jobseeker'
-          if (userTypes[role] !== undefined) {
-            userTypes[role]++
+          if (userTypes[role as keyof UserTypeCounts] !== undefined) {
+            userTypes[role as keyof UserTypeCounts]++
           }
         })
         
-        const userTypesData = Object.entries(userTypes)
+        const userTypesData: ChartDataPoint[] = Object.entries(userTypes)
           .map(([type, count]) => ({ name: type, value: Number(count) }))
           .filter(item => item.value > 0)
 
         // Get top 5 locations
-        const locationCounts = {}
+        const locationCounts: Record<string, number> = {}
         usersSnapshot.docs.forEach(doc => {
-          const user = doc.data()
+          const user = formatUserData(doc)
           const location = user.city || user.location || 'Unknown'
           locationCounts[location] = (locationCounts[location] || 0) + 1
         })
         
-        const userLocationsData = Object.entries(locationCounts)
+        const userLocationsData: ChartDataPoint[] = Object.entries(locationCounts)
           .map(([location, count]) => ({ name: location, value: count }))
           .sort((a, b) => b.value - a.value)
           .slice(0, 5)
@@ -296,7 +367,9 @@ export default function ReportsPage() {
           const monthJobsQuery = query(
             collection(db, "jobs"),
             where("createdAt", ">=", Timestamp.fromDate(monthStart)),
-            where("createdAt", "<=", Timestamp.fromDate(monthEnd))
+            where("createdAt", "<=", Timestamp.fromDate(monthEnd)),
+            where("isActive", "==", true),
+            where("verificationStatus", "==", "approved")
           )
           const monthJobsSnapshot = await getDocs(monthJobsQuery)
           
@@ -307,28 +380,28 @@ export default function ReportsPage() {
         }
 
         // Job types data
-        const jobTypeCounts = {}
+        const jobTypeCounts: Record<string, number> = {}
         jobsSnapshot.docs.forEach(doc => {
-          const job = doc.data()
+          const job = formatJobData(doc)
           const type = job.type || 'Unspecified'
           jobTypeCounts[type] = (jobTypeCounts[type] || 0) + 1
         })
         
-        const jobTypesData = Object.entries(jobTypeCounts)
+        const jobTypesData: ChartDataPoint[] = Object.entries(jobTypeCounts)
           .map(([type, count]) => ({ name: type, value: count }))
           .sort((a, b) => b.value - a.value)
 
         // Application status data
-        const statusCounts = { pending: 0, reviewed: 0, shortlisted: 0, rejected: 0, hired: 0 }
+        const statusCounts: Record<string, number> = { pending: 0, reviewed: 0, shortlisted: 0, rejected: 0, hired: 0 }
         applicationsSnapshot.docs.forEach(doc => {
-          const application = doc.data()
+          const application = formatApplicationData(doc)
           const status = application.status || 'pending'
           if (statusCounts[status] !== undefined) {
             statusCounts[status]++
           }
         })
         
-        const applicationStatusData = Object.entries(statusCounts)
+        const applicationStatusData: ChartDataPoint[] = Object.entries(statusCounts)
           .map(([status, count]) => ({ name: status, value: Number(count) }))
           .filter(item => item.value > 0)
 

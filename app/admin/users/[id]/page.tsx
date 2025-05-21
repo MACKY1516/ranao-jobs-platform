@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { useAdminToast } from "@/components/admin-toast"
 import { User, Mail, MapPin, Calendar, Clock, Briefcase, FileText, AlertTriangle, Loader2 } from "lucide-react"
 import { db } from "@/lib/firebase"
-import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, addDoc, serverTimestamp, Timestamp } from "firebase/firestore"
+import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, addDoc, serverTimestamp, Timestamp, orderBy, DocumentData } from "firebase/firestore"
 import { formatDistanceToNow } from "date-fns"
 import React from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -60,17 +60,73 @@ interface UserData {
   }>
 }
 
+interface Application {
+  id: string
+  jobTitle: string
+  company: string
+  appliedAt: string
+  status: string
+}
+
+interface Job {
+  id: string
+  title: string
+  companyName: string
+  location: string
+  type: string
+  category: string
+  createdAt: string
+  verificationStatus: string
+  isActive: boolean
+  applicationsCount: number
+}
+
+interface Note {
+  id: string
+  content: string
+  createdAt: string
+  createdBy: string
+}
+
+interface Activity {
+  id: string
+  type: string
+  description: string
+  timestamp: string
+  metadata?: Record<string, any>
+}
+
+const recordUserActivity = async (
+  userId: string,
+  type: string,
+  description: string,
+  metadata?: Record<string, any>
+) => {
+  try {
+    await addDoc(collection(db, "userActivities"), {
+      userId,
+      type,
+      description,
+      timestamp: serverTimestamp(),
+      metadata
+    })
+  } catch (err) {
+    console.error("Error recording user activity:", err)
+  }
+}
+
 export default function UserProfilePage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const { success, error } = useAdminToast()
   const [isLoading, setIsLoading] = useState(true)
   const [isActionLoading, setIsActionLoading] = useState(false)
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [applications, setApplications] = useState<any[]>([])
-  const [jobs, setJobs] = useState<any[]>([])
+  const [applications, setApplications] = useState<Application[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
   
   // Admin notes state
-  const [notes, setNotes] = useState<Array<{id: string, content: string, createdAt: string, createdBy: string}>>([])
+  const [notes, setNotes] = useState<Note[]>([])
   const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false)
   const [newNote, setNewNote] = useState("")
   const [isSubmittingNote, setIsSubmittingNote] = useState(false)
@@ -78,6 +134,15 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
   // Access params directly in client components
   const userId = params.id
   
+  // Helper function to format Firestore timestamps
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return null;
+    if (timestamp instanceof Date) return timestamp.toISOString();
+    if (timestamp?.toDate) return timestamp.toDate().toISOString();
+    if (typeof timestamp === 'string') return timestamp;
+    return null;
+  };
+
   // Fetch user data from Firestore
   useEffect(() => {
     const fetchUserData = async () => {
@@ -92,9 +157,12 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
           return
         }
         
+        const userData = userDoc.data()
         const user = {
           id: userDoc.id,
-          ...userDoc.data(),
+          ...userData,
+          createdAt: formatTimestamp(userData.createdAt),
+          updatedAt: formatTimestamp(userData.updatedAt)
         } as UserData
         
         setUserData(user)
@@ -106,65 +174,94 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
         )
         
         const notesSnapshot = await getDocs(notesQuery)
-        const notesData = notesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() 
-            ? doc.data().createdAt.toDate().toISOString() 
-            : doc.data().createdAt
-        }))
+        const notesData = notesSnapshot.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            content: data.content || "",
+            createdAt: formatTimestamp(data.createdAt),
+            createdBy: data.createdBy || "Admin"
+          } as Note
+        })
         
-        setNotes(notesData as any[])
-        
-        // If user is a jobseeker, get their applications
+        setNotes(notesData)
+
+        // Fetch user applications if jobseeker
         if (user.role === "jobseeker" || user.role === "multi") {
           const applicationsQuery = query(
             collection(db, "applications"),
-            where("userId", "==", userId)
+            where("jobseekerId", "==", userId),
+            orderBy("appliedAt", "desc")
           )
           
           const applicationsSnapshot = await getDocs(applicationsQuery)
           const applicationsData = await Promise.all(
-            applicationsSnapshot.docs.map(async (applicationDoc) => {
-              const applicationData = applicationDoc.data()
-              
-              // Fetch job details for each application
-              const jobDoc = await getDoc(doc(db, "jobs", applicationData.jobId))
-              const jobData = jobDoc.exists() ? jobDoc.data() : null
-              
-              // Fetch employer details
-              const employerDoc = await getDoc(doc(db, "users", applicationData.employerId))
-              const employerData = employerDoc.exists() ? employerDoc.data() : null
+            applicationsSnapshot.docs.map(async (docSnapshot) => {
+              const application = docSnapshot.data()
+              const jobDoc = await getDoc(doc(db, "jobs", application.jobId))
+              const jobData = jobDoc.exists() ? jobDoc.data() : {}
               
               return {
-                id: applicationDoc.id,
-                ...applicationData,
+                id: docSnapshot.id,
                 jobTitle: jobData?.title || "Unknown Job",
-                company: employerData?.companyName || "Unknown Company",
-                status: applicationData.status || "Pending",
-                appliedAt: applicationData.createdAt || new Date().toISOString()
-              }
+                company: jobData?.companyName || "Unknown Company",
+                appliedAt: formatTimestamp(application.appliedAt),
+                status: application.status || "pending"
+              } as Application
             })
           )
           
           setApplications(applicationsData)
         }
-        
-        // If user is an employer, get their job listings
+
+        // Fetch user's job listings if employer
         if (user.role === "employer" || user.role === "multi") {
           const jobsQuery = query(
             collection(db, "jobs"),
-            where("employerId", "==", userId)
+            where("employerId", "==", userId),
+            orderBy("createdAt", "desc")
           )
           
           const jobsSnapshot = await getDocs(jobsQuery)
-          const jobsData = jobsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
+          const jobsData = jobsSnapshot.docs.map(doc => {
+            const data = doc.data()
+            return {
+              id: doc.id,
+              title: data.title || "",
+              companyName: data.companyName || "",
+              location: data.location || "",
+              type: data.type || "",
+              category: data.category || "",
+              createdAt: formatTimestamp(data.createdAt),
+              verificationStatus: data.verificationStatus || "pending",
+              isActive: data.isActive || false,
+              applicationsCount: data.applicationsCount || 0
+            } as Job
+          })
           
           setJobs(jobsData)
         }
+
+        // Fetch user activities
+        const activitiesQuery = query(
+          collection(db, "userActivities"),
+          where("userId", "==", userId),
+          orderBy("timestamp", "desc")
+        )
+        
+        const activitiesSnapshot = await getDocs(activitiesQuery)
+        const activitiesData = activitiesSnapshot.docs.map(doc => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            type: data.type || "",
+            description: data.description || "",
+            timestamp: formatTimestamp(data.timestamp),
+            metadata: data.metadata || {}
+          } as Activity
+        })
+        
+        setActivities(activitiesData)
       } catch (err) {
         console.error("Error fetching user data:", err)
         error("Failed to load user data")
@@ -189,6 +286,18 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
         isDisabled: newStatus,
         updatedAt: new Date().toISOString()
       })
+      
+      // Record the activity
+      await recordUserActivity(
+        userData.id,
+        "status_change",
+        `User ${userData.isDisabled ? "reactivated" : "suspended"}`,
+        {
+          previousStatus: userData.isDisabled ? "suspended" : "active",
+          newStatus: userData.isDisabled ? "active" : "suspended",
+          actionBy: "admin"
+        }
+      )
       
       // Update local state
       setUserData(prev => prev ? {
@@ -219,6 +328,18 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
     
     setIsActionLoading(true)
     try {
+      // Record the activity before deleting
+      await recordUserActivity(
+        userData.id,
+        "status_change",
+        "User account deleted",
+        {
+          previousStatus: userData.isDisabled ? "suspended" : "active",
+          actionBy: "admin",
+          userRole: userData.role
+        }
+      )
+
       // Delete user from Firestore
       await deleteDoc(doc(db, "users", userData.id))
       
@@ -275,6 +396,18 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
         createdAt: serverTimestamp(),
         createdBy: "Admin", // Replace with actual admin user info when available
       })
+      
+      // Record the activity
+      await recordUserActivity(
+        userData.id,
+        "note_added",
+        "Admin note added",
+        {
+          noteId: noteRef.id,
+          notePreview: newNote.trim().substring(0, 50) + (newNote.trim().length > 50 ? "..." : ""),
+          actionBy: "admin"
+        }
+      )
       
       // Add to local state
       const now = new Date().toISOString()
@@ -571,30 +704,28 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                   <TabsContent value="applications">
                     <div className="space-y-4">
                       {applications.length === 0 ? (
-                        <div className="text-center py-4">
-                          <p className="text-gray-500">No applications found</p>
-                        </div>
+                        <p className="text-gray-500 text-center py-4">No applications found</p>
                       ) : (
-                        applications.map((app, index) => (
-                          <div key={index} className="p-4 border rounded-md">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium">{app.jobTitle}</p>
-                                <p className="text-sm text-gray-500">{app.company}</p>
-                                <p className="text-xs text-gray-400">Applied on {formatDate(app.appliedAt)}</p>
-                              </div>
-                              <Badge
-                                className={
-                                  app.status === "pending" || app.status === "under review"
-                                    ? "bg-blue-100 text-blue-800"
-                                    : app.status === "rejected"
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-green-100 text-green-800"
-                                }
-                              >
-                                {app.status}
-                              </Badge>
+                        applications.map((application) => (
+                          <div key={application.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="font-medium">{application.jobTitle}</p>
+                              <p className="text-sm text-gray-500">{application.company}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Applied on {formatDate(application.appliedAt)}
+                              </p>
                             </div>
+                            <Badge
+                              className={
+                                application.status === "accepted"
+                                  ? "bg-green-100 text-green-800"
+                                  : application.status === "rejected"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                              }
+                            >
+                              {application.status}
+                            </Badge>
                           </div>
                         ))
                       )}
@@ -643,27 +774,36 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                   <TabsContent value="jobs">
                     <div className="space-y-4">
                       {jobs.length === 0 ? (
-                        <div className="text-center py-4">
-                          <p className="text-gray-500">No job listings found</p>
-                        </div>
+                        <p className="text-gray-500 text-center py-4">No job listings found</p>
                       ) : (
-                        jobs.map((job, index) => (
-                          <div key={index} className="p-4 border rounded-md">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium">{job.title}</p>
-                                <p className="text-sm text-gray-500">{job.location}</p>
-                                <p className="text-xs text-gray-400">Posted on {formatDate(job.createdAt)}</p>
-                              </div>
+                        jobs.map((job) => (
+                          <div key={job.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="font-medium">{job.title}</p>
+                              <p className="text-sm text-gray-500">{job.location}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Posted on {formatDate(job.createdAt)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
                               <Badge
                                 className={
-                                  job.isActive
+                                  job.verificationStatus === "approved"
                                     ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-800"
+                                    : job.verificationStatus === "rejected"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-yellow-100 text-yellow-800"
                                 }
                               >
-                                {job.isActive ? "Active" : "Inactive"}
+                                {job.verificationStatus}
                               </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => router.push(`/admin/jobs/${job.id}`)}
+                              >
+                                View
+                              </Button>
                             </div>
                           </div>
                         ))
@@ -672,8 +812,37 @@ export default function UserProfilePage({ params }: { params: { id: string } }) 
                   </TabsContent>
 
                   <TabsContent value="activity">
-                    <div className="text-center py-8">
-                      <p className="text-gray-500">Activity log feature will be implemented soon</p>
+                    <div className="space-y-4">
+                      {activities.length === 0 ? (
+                        <p className="text-gray-500 text-center py-4">No activity found</p>
+                      ) : (
+                        activities.map((activity) => (
+                          <div key={activity.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                            <div className="flex-shrink-0">
+                              {activity.type === "profile_update" && <User className="h-5 w-5 text-blue-500" />}
+                              {activity.type === "job_application" && <FileText className="h-5 w-5 text-green-500" />}
+                              {activity.type === "job_post" && <Briefcase className="h-5 w-5 text-purple-500" />}
+                              {activity.type === "verification" && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                              {activity.type === "status_change" && <Clock className="h-5 w-5 text-red-500" />}
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">{activity.description}</p>
+                              {activity.metadata && Object.keys(activity.metadata).length > 0 && (
+                                <div className="mt-1 text-sm text-gray-500">
+                                  {Object.entries(activity.metadata).map(([key, value]) => (
+                                    <p key={key}>
+                                      {key}: {typeof value === 'object' ? JSON.stringify(value) : value}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                              <p className="text-xs text-gray-400 mt-1">
+                                {formatTimeAgo(activity.timestamp)}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </TabsContent>
                 </Tabs>

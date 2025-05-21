@@ -12,69 +12,16 @@ import { AuthCheckModal } from "@/components/auth-check-modal"
 import { Calendar, Clock, MapPin, Search, Filter, CheckCircle2, XCircle, Clock3 } from "lucide-react"
 import Link from "next/link"
 import { BackButton } from "@/components/back-button"
+import { db } from "@/lib/firebase"
+import { collection, query, where, getDocs, orderBy, doc, getDoc, Timestamp } from "firebase/firestore"
+import { format } from "date-fns"
 
 export default function JobseekerApplicationsPage() {
   const router = useRouter()
   const [userData, setUserData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
-  const [applications, setApplications] = useState([
-    {
-      id: "1",
-      jobTitle: "Senior Frontend Developer",
-      company: "Tech Solutions Inc.",
-      location: "Marawi City",
-      appliedDate: "Jan 15, 2023",
-      status: "Interview Scheduled",
-      statusColor: "green",
-      interviewDate: "Jan 25, 2023",
-      salary: "₱60,000 - ₱80,000",
-    },
-    {
-      id: "2",
-      jobTitle: "UX Designer",
-      company: "Creative Minds",
-      location: "Iligan City",
-      appliedDate: "Jan 10, 2023",
-      status: "Application Reviewed",
-      statusColor: "blue",
-      interviewDate: null,
-      salary: "₱45,000 - ₱60,000",
-    },
-    {
-      id: "3",
-      jobTitle: "Backend Developer",
-      company: "Digital Solutions",
-      location: "Cagayan de Oro",
-      appliedDate: "Jan 5, 2023",
-      status: "Application Submitted",
-      statusColor: "yellow",
-      interviewDate: null,
-      salary: "₱55,000 - ₱75,000",
-    },
-    {
-      id: "4",
-      jobTitle: "Project Manager",
-      company: "Innovative Systems",
-      location: "Remote",
-      appliedDate: "Dec 20, 2022",
-      status: "Rejected",
-      statusColor: "red",
-      interviewDate: null,
-      salary: "₱70,000 - ₱90,000",
-    },
-    {
-      id: "5",
-      jobTitle: "Full Stack Developer",
-      company: "Web Solutions",
-      location: "Davao City",
-      appliedDate: "Dec 15, 2022",
-      status: "Offer Received",
-      statusColor: "purple",
-      interviewDate: null,
-      salary: "₱65,000 - ₱85,000",
-    },
-  ])
+  const [applications, setApplications] = useState<any[]>([])
 
   useEffect(() => {
     // Check if user is logged in

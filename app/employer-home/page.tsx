@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress"
 import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
 import { AuthCheckModal } from "@/components/auth-check-modal"
-import { Briefcase, Users, Clock, AlertCircle, ChevronRight, Bell, CheckCircle2 } from "lucide-react"
+import { Briefcase, Users, Clock, AlertCircle, ChevronRight, Bell, CheckCircle2, LogIn, Edit, User, FileText, XCircle, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/firebase"
 import { collection, query, where, getDocs, orderBy, limit, getDoc, doc, Timestamp } from "firebase/firestore"
@@ -26,10 +26,25 @@ export default function EmployerHomePage() {
   const [stats, setStats] = useState({
     totalJobs: 0,
     totalApplicants: 0,
-    jobsAwaitingApproval: 0,
+    activeJobs: 0,
     newApplicants: 0,
   })
   const [recentActivity, setRecentActivity] = useState<any[]>([])
+
+  // Activity type icons mapping for employer activities (same as activity page)
+  const activityIcons: Record<string, any> = {
+    login: <LogIn className="h-4 w-4 text-green-600" />,
+    job_edit: <Edit className="h-4 w-4 text-orange-600" />,
+    profile_update: <User className="h-4 w-4 text-blue-600" />,
+    job_post: <Briefcase className="h-4 w-4 text-yellow-600" />,
+    job_delete: <Trash2 className="h-4 w-4 text-red-600" />,
+    job_status_change: <Clock className="h-4 w-4 text-gray-500" />,
+    application: <FileText className="h-4 w-4 text-purple-600" />,
+    approval: <CheckCircle2 className="h-4 w-4 text-green-600" />,
+    rejection: <XCircle className="h-4 w-4 text-red-600" />,
+    // Add other employer-specific activity types here with appropriate icons
+    info: <Bell className="h-4 w-4 text-purple-600" /> // Default or general info icon
+  }
 
   useEffect(() => {
     // Check if user is logged in
@@ -69,115 +84,64 @@ export default function EmployerHomePage() {
         // Count ALL jobs regardless of approval status
         const totalJobs = jobsSnapshot.size
         
-        // Count pending jobs (those with isActive = false or undefined)
-        const pendingJobs = jobsSnapshot.docs.filter(doc => {
-          const data = doc.data()
-          return data.isActive === false || data.isActive === undefined
-        }).length
+        // Count active jobs (isActive === true)
+        const activeJobs = jobsSnapshot.docs.filter(doc => doc.data().isActive === true).length
         
         // Count total applicants across all jobs
         let applicantsCount = 0
         let newApplicantsCount = 0
         
-        // Get applications for all jobs
-        const jobIds = jobsSnapshot.docs.map(doc => doc.id)
+        // Fetch total applicants count for the employer's jobs
+        const applicationsQuery = query(
+          collection(db, "applications"),
+          where("employerId", "==", user.id)
+        )
+        const applicationsSnapshot = await getDocs(applicationsQuery)
+        applicantsCount = applicationsSnapshot.size
         
-        if (jobIds.length > 0) {
-          const applicationsQuery = query(
-            collection(db, "applications"),
-            where("employerId", "==", user.id)
-          )
-          const applicationsSnapshot = await getDocs(applicationsQuery)
-          
-          applicantsCount = applicationsSnapshot.size
-          
-          // Count new/unreviewed applications
-          newApplicantsCount = applicationsSnapshot.docs.filter(doc => 
-            doc.data().status === "pending" || doc.data().status === "new"
-          ).length
-          
-          // Get recent activity from applications
-          const recentActivitiesQuery = query(
-            collection(db, "applications"),
-            where("employerId", "==", user.id),
-            orderBy("createdAt", "desc"),
-            limit(5)
-          )
-          
-          const recentActivitiesSnapshot = await getDocs(recentActivitiesQuery)
-          
-          const activities = await Promise.all(recentActivitiesSnapshot.docs.map(async (appDoc) => {
-            const appData = appDoc.data()
+        // Count new/unreviewed applications (assuming status is 'pending' or 'new')
+        newApplicantsCount = applicationsSnapshot.docs.filter(doc => 
+          doc.data().status === "pending" || doc.data().status === "new"
+        ).length
+        
+        // Fetch recent activities from the dedicated 'activity_emp' collection
+        const recentActivitiesQuery = query(
+          collection(db, "activity_emp"),
+          where("employerId", "==", user.id),
+          orderBy("createdAt", "desc"),
+          limit(5) // Limit to show only the most recent 5 activities
+        )
+        
+        const recentActivitiesSnapshot = await getDocs(recentActivitiesQuery)
+        
+        const activityList = recentActivitiesSnapshot.docs.map(doc => {
+          const data = doc.data()
+          const createdTime = data.createdAt instanceof Timestamp 
+            ? data.createdAt.toDate() 
+            : new Date(data.createdAt)
             
-            // Get job title
-            let jobTitle = "Unknown Job"
-            if (appData.jobId) {
-              const jobDoc = await getDoc(doc(db, "jobs", appData.jobId))
-              if (jobDoc.exists()) {
-                jobTitle = jobDoc.data().title
-              }
-            }
-            
-            // Get applicant name
-            let applicantName = "Someone"
-            if (appData.userId) {
-              const userDoc = await getDoc(doc(db, "users", appData.userId))
-              if (userDoc.exists()) {
-                const userData = userDoc.data()
-                applicantName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || "Someone"
-              }
-            }
-            
-            const createdTime = appData.createdAt instanceof Timestamp 
-              ? appData.createdAt.toDate() 
-              : new Date(appData.createdAt)
-              
-            return {
-              id: appDoc.id,
-              type: "application",
-              message: `${applicantName} applied to ${jobTitle}`,
-              time: formatDistanceToNow(createdTime, { addSuffix: true })
-            }
-          }))
-          
-          // Add job approval notifications to activity feed
-          const approvedJobs = jobsSnapshot.docs
-            .filter(doc => doc.data().isActive)
-            .map(doc => {
-              const jobData = doc.data()
-              const updatedTime = jobData.updatedAt instanceof Timestamp 
-                ? jobData.updatedAt.toDate() 
-                : new Date(jobData.updatedAt)
-                
-              return {
-                id: `job-${doc.id}`,
-                type: "approval",
-                message: `Your job posting for ${jobData.title} has been approved`,
-                time: formatDistanceToNow(updatedTime, { addSuffix: true })
-              }
-            })
-            .slice(0, 2) // Only take latest 2 approved jobs
-          
-          setRecentActivity([...activities, ...approvedJobs]
-            .sort((a, b) => {
-              // Sort by time (this is a rough approximation since the times are strings)
-              return new Date(b.time).getTime() - new Date(a.time).getTime()
-            })
-            .slice(0, 5) // Limit to 5 activities
-          )
-        }
+          return {
+            id: doc.id,
+            type: data.type || "info", // Use activity type from Firestore
+            message: data.message || "",
+            time: formatDistanceToNow(createdTime, { addSuffix: true }),
+            metadata: data.metadata || {} // Include metadata field
+          }
+        })
+        
+        setRecentActivity(activityList)
         
         // Update stats
         setStats({
           totalJobs,
           totalApplicants: applicantsCount,
-          jobsAwaitingApproval: pendingJobs,
+          activeJobs,
           newApplicants: newApplicantsCount
         })
         
         // Calculate profile completion using the new utility function
-        const completionPercentage = await calculateEmployerProfileCompletion(user.id);
-        setProfileCompletion(completionPercentage);
+        const completionPercentage = await calculateEmployerProfileCompletion(user.id)
+        setProfileCompletion(completionPercentage)
         
         setIsLoading(false)
       } catch (error) {
@@ -282,7 +246,7 @@ export default function EmployerHomePage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <div className="text-3xl font-bold">{stats.jobsAwaitingApproval}</div>
+                  <div className="text-3xl font-bold">{stats.activeJobs}</div>
                   <div className="p-2 bg-orange-100 rounded-full">
                     <AlertCircle className="h-5 w-5 text-orange-600" />
                   </div>
@@ -338,6 +302,17 @@ export default function EmployerHomePage() {
               <Link href="/employer/applicants">
                 <Button variant="outline">View Applicants</Button>
               </Link>
+              <Link href="/employer-home/notification">
+                <Button variant="outline" className="relative">
+                  <Bell className="mr-2 h-4 w-4" />
+                  Notifications
+                  {stats.newApplicants > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {stats.newApplicants}
+                    </span>
+                  )}
+                </Button>
+              </Link>
             </div>
           </div>
 
@@ -366,16 +341,32 @@ export default function EmployerHomePage() {
                                   : "bg-purple-100"
                             }`}
                           >
-                            {activity.type === "application" ? (
-                              <Users className={`h-4 w-4 text-blue-600`} />
-                            ) : activity.type === "approval" ? (
-                              <CheckCircle2 className={`h-4 w-4 text-green-600`} />
-                            ) : (
-                              <Bell className={`h-4 w-4 text-purple-600`} />
-                            )}
+                            {/* Use the mapped icon based on activity type */}
+                            {activityIcons[activity.type] || activityIcons.info}
                           </div>
                           <div className="flex-1">
                             <p className="text-sm">{activity.message}</p>
+                            {activity.metadata && activity.metadata.changes && Object.keys(activity.metadata.changes).length > 0 && (
+                              <div className="mt-1 text-xs text-gray-500 bg-gray-50 p-2 rounded-sm">
+                                <p className="font-medium">Changes:</p>
+                                <div className="max-h-20 overflow-y-auto">
+                                  {Object.entries(activity.metadata.changes)
+                                    .slice(0, 3) // Limit to first 3 changes to save space
+                                    .map(([key, value], index) => (
+                                      <p key={key + index} className="ml-2">
+                                        <span className="font-semibold">{key}:</span> {
+                                          typeof value === 'object' && value !== null 
+                                            ? JSON.stringify(value).substring(0, 40) + (JSON.stringify(value).length > 40 ? '...' : '')  // Truncate long values
+                                            : String(value).substring(0, 40) + (String(value).length > 40 ? '...' : '')
+                                        }
+                                      </p>
+                                  ))}
+                                  {Object.keys(activity.metadata.changes).length > 3 && (
+                                    <p className="ml-2 text-blue-500">+{Object.keys(activity.metadata.changes).length - 3} more changes</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
                           </div>
                         </div>
@@ -388,7 +379,7 @@ export default function EmployerHomePage() {
                   )}
                   {recentActivity.length > 0 && (
                     <div className="mt-4 text-center">
-                      <Button variant="ghost" size="sm" onClick={() => router.push('/employer/applicants')}>
+                      <Button variant="ghost" size="sm" onClick={() => router.push('/employer-home/activity')}>
                         View All Activity
                       </Button>
                     </div>

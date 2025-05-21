@@ -15,13 +15,14 @@ import { Switch } from "@/components/ui/switch"
 import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
 import { AuthCheckModal } from "@/components/auth-check-modal"
-import { Upload, FileText, Save, Loader2 } from "lucide-react"
+import { Upload, FileText, Save, Loader2, Clock } from "lucide-react"
 import Image from "next/image"
 import { BackButton } from "@/components/back-button"
 import { RoleSwitcher } from "@/components/role-switcher"
-import { getUserProfile, updateUserProfile } from "@/lib/users"
+import { getUserProfile, updateUserProfile, requestMultiRoleUpgrade } from "@/lib/users"
 import { uploadJobseekerPhoto, uploadJobseekerResume } from "@/lib/fileUpload"
 import { useToast } from "@/components/ui/use-toast"
+import { recordActivity } from "@/lib/activity-logger"
 
 // Define a type for the additional document
 interface AdditionalDocument {
@@ -168,6 +169,14 @@ export default function JobseekerProfilePage() {
     additionalDocuments: []
   })
   const [wantsToUpgrade, setWantsToUpgrade] = useState(false)
+  const [multiRoleRequestStatus, setMultiRoleRequestStatus] = useState<"none" | "pending" | "rejected">("none")
+  const [employerData, setEmployerData] = useState({
+    companyName: "",
+    companyIndustry: "",
+    companySize: "",
+    businessDescription: "",
+    businessWebsite: ""
+  })
 
   const photoInputRef = useRef<HTMLInputElement>(null)
   const resumeInputRef = useRef<HTMLInputElement>(null)
@@ -193,6 +202,13 @@ export default function JobseekerProfilePage() {
     if (user.role === "multi" && user.activeRole !== "jobseeker") {
       user.activeRole = "jobseeker"
       localStorage.setItem("ranaojobs_user", JSON.stringify(user))
+    }
+
+    // Check for multi-role request status
+    if (user.multiRoleRequested) {
+      setMultiRoleRequestStatus("pending")
+    } else if (user.multiRoleRejected) {
+      setMultiRoleRequestStatus("rejected")
     }
 
     setIsMultiRole(user.role === "multi")
@@ -270,6 +286,42 @@ export default function JobseekerProfilePage() {
       // Update Firestore with all changes
       await updateUserProfile(userData.id, profileUpdates);
       
+      // Identify changes for activity logging
+      const changes: Record<string, any> = {};
+      // Compare current profileData with the initial data (need to fetch or store initial data)
+      // For now, let's just log the updated fields. A more robust solution would involve storing initial state.
+      
+      // Simple comparison for basic fields
+      if (profileUpdates.firstName !== profileData.firstName) changes.firstName = profileUpdates.firstName;
+      if (profileUpdates.lastName !== profileData.lastName) changes.lastName = profileUpdates.lastName;
+      if (profileUpdates.email !== profileData.email) changes.email = profileUpdates.email;
+      if (profileUpdates.phone !== profileData.phone) changes.phone = profileUpdates.phone;
+      if (profileUpdates.location !== profileData.location) changes.location = profileUpdates.location;
+      if (profileUpdates.title !== profileData.title) changes.title = profileUpdates.title;
+      if (profileUpdates.about !== profileData.about) changes.about = profileUpdates.about;
+      if (profileUpdates.availability !== profileData.availability) changes.availability = profileUpdates.availability;
+      if (profileUpdates.salaryExpectation !== profileData.salaryExpectation) changes.salaryExpectation = profileUpdates.salaryExpectation;
+      if (profileUpdates.isRemote !== profileData.isRemote) changes.isRemote = profileUpdates.isRemote;
+      if (profileUpdates.isRelocate !== profileData.isRelocate) changes.isRelocate = profileUpdates.isRelocate;
+
+      // Compare array fields (skills, experience, education, certifications, languages, additionalDocuments)
+      // This is a simplified comparison that checks if the array content is different
+      if (JSON.stringify(profileUpdates.skills) !== JSON.stringify(profileData.skills)) changes.skills = profileUpdates.skills;
+      if (JSON.stringify(profileUpdates.experience) !== JSON.stringify(profileData.experience)) changes.experience = profileUpdates.experience;
+      if (JSON.stringify(profileUpdates.education) !== JSON.stringify(profileData.education)) changes.education = profileUpdates.education;
+      if (JSON.stringify(profileUpdates.certifications) !== JSON.stringify(profileData.certifications)) changes.certifications = profileUpdates.certifications;
+      if (JSON.stringify(profileUpdates.languages) !== JSON.stringify(profileData.languages)) changes.languages = profileUpdates.languages;
+      if (JSON.stringify(profileUpdates.additionalDocuments) !== JSON.stringify(profileData.additionalDocuments)) changes.additionalDocuments = profileUpdates.additionalDocuments;
+
+      // Include changes from uploaded files if they resulted in URL updates
+      if (profileUpdates.profilePhoto && profileUpdates.profilePhoto !== profileData.profilePhoto) {
+          changes.profilePhoto = profileUpdates.profilePhoto;
+      }
+       if (profileUpdates.resume && profileUpdates.resume !== profileData.resume) {
+          changes.resume = profileUpdates.resume;
+          changes.resumeFileName = profileUpdates.resumeFileName; // Include filename if resume changed
+      }
+      
       // Update local state
       setProfileData(profileUpdates);
       
@@ -284,6 +336,20 @@ export default function JobseekerProfilePage() {
         title: "Profile saved",
         description: "Your profile has been updated successfully",
       });
+      
+      // Record profile update activity only if there were actual changes
+      if (Object.keys(changes).length > 0) {
+         await recordActivity(
+           userData.id,
+           "profile_update",
+           `Jobseeker ${userData.firstName || ''} ${userData.lastName || ''} updated their profile`,
+           {
+             email: userData.email,
+             changes: changes // Include the detected changes in metadata
+           }
+         );
+      }
+      
     } catch (error) {
       console.error("Error saving profile:", error);
       toast({
@@ -296,20 +362,41 @@ export default function JobseekerProfilePage() {
     }
   }
 
-  const handleUpgradeToMultiRole = () => {
-    // In a real app, this would trigger a verification process
-    // For now, we'll just update the user's role in localStorage
-    if (userData) {
-      const updatedUser = { ...userData, role: "multi", activeRole: "jobseeker" }
-      localStorage.setItem("ranaojobs_user", JSON.stringify(updatedUser))
-      setUserData(updatedUser)
-      setIsMultiRole(true)
+  const handleUpgradeToMultiRole = async () => {
+    if (!userData) return
+    
+    // Validate required fields
+    if (!employerData.companyName.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your company name",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    setIsSaving(true)
+    try {
+      // Request multi-role upgrade in Firestore
+      await requestMultiRoleUpgrade(userData.id, employerData, true)
+      
+      // Update local state to show pending status
+      setMultiRoleRequestStatus("pending")
       setWantsToUpgrade(false)
 
-      // Dispatch custom event to notify other components
-      window.dispatchEvent(new Event("userStateChange"))
-
-      alert("Your account has been upgraded to MultiRole! You can now switch between Jobseeker and Employer roles.")
+      toast({
+        title: "Request Submitted",
+        description: "Your multi-role account request has been submitted for admin approval.",
+      })
+    } catch (error) {
+      console.error("Error requesting account upgrade:", error)
+      toast({
+        title: "Error",
+        description: "Failed to submit your upgrade request",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -590,7 +677,7 @@ export default function JobseekerProfilePage() {
           </div>
 
           {/* MultiRole Upgrade Card */}
-          {!isMultiRole && !wantsToUpgrade && (
+          {!isMultiRole && !wantsToUpgrade && multiRoleRequestStatus !== "pending" && (
             <Card className="mb-6 border-yellow-500">
               <CardHeader className="bg-yellow-50">
                 <CardTitle className="text-lg">Upgrade to MultiRole Account</CardTitle>
@@ -602,15 +689,38 @@ export default function JobseekerProfilePage() {
               <CardContent className="pt-4">
                 <p className="text-sm text-gray-600 mb-4">
                   With a MultiRole account, you can easily switch between Jobseeker and Employer modes, allowing you to
-                  both apply for jobs and post job listings.
+                  both apply for jobs and post job listings. {multiRoleRequestStatus === "rejected" && (
+                    <span className="text-red-600 font-medium">Your previous request was rejected. You may submit a new request.</span>
+                  )}
                 </p>
                 <Button
                   variant="outline"
                   className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
                   onClick={() => setWantsToUpgrade(true)}
                 >
-                  Upgrade My Account
+                  Request Upgrade
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* MultiRole Pending Approval Card */}
+          {!isMultiRole && multiRoleRequestStatus === "pending" && (
+            <Card className="mb-6 border-blue-500">
+              <CardHeader className="bg-blue-50">
+                <CardTitle className="text-lg">MultiRole Account Request Pending</CardTitle>
+                <CardDescription>
+                  Your request to upgrade to a MultiRole account is currently being reviewed by admins.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <p className="text-sm text-gray-600 mb-4">
+                  Once approved, you'll be able to switch between Jobseeker and Employer modes. We'll notify you when your request has been processed.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-blue-500" />
+                  <span className="text-blue-600 text-sm font-medium">Pending Admin Approval</span>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -627,17 +737,32 @@ export default function JobseekerProfilePage() {
               <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="companyName">Company Name</Label>
-                  <Input id="companyName" placeholder="Your company's name" />
+                  <Input 
+                    id="companyName" 
+                    placeholder="Your company's name" 
+                    value={employerData.companyName}
+                    onChange={(e) => setEmployerData({...employerData, companyName: e.target.value})}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="companyIndustry">Industry</Label>
-                    <Input id="companyIndustry" placeholder="e.g. Technology, Healthcare" />
+                    <Input 
+                      id="companyIndustry" 
+                      placeholder="e.g. Technology, Healthcare" 
+                      value={employerData.companyIndustry}
+                      onChange={(e) => setEmployerData({...employerData, companyIndustry: e.target.value})}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="companySize">Company Size</Label>
-                    <Input id="companySize" placeholder="Number of employees" />
+                    <Input 
+                      id="companySize" 
+                      placeholder="Number of employees" 
+                      value={employerData.companySize}
+                      onChange={(e) => setEmployerData({...employerData, companySize: e.target.value})}
+                    />
                   </div>
                 </div>
 
@@ -647,20 +772,38 @@ export default function JobseekerProfilePage() {
                     id="businessDescription"
                     placeholder="Brief description of your business"
                     rows={3}
+                    value={employerData.businessDescription}
+                    onChange={(e) => setEmployerData({...employerData, businessDescription: e.target.value})}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="businessWebsite">Business Website</Label>
-                  <Input id="businessWebsite" placeholder="e.g. https://example.com" />
+                  <Input 
+                    id="businessWebsite" 
+                    placeholder="e.g. https://example.com" 
+                    value={employerData.businessWebsite}
+                    onChange={(e) => setEmployerData({...employerData, businessWebsite: e.target.value})}
+                  />
                 </div>
 
                 <div className="flex justify-end space-x-3 pt-2">
                   <Button variant="outline" onClick={() => setWantsToUpgrade(false)}>
                     Cancel
                   </Button>
-                  <Button className="bg-yellow-500 hover:bg-yellow-600 text-black" onClick={handleUpgradeToMultiRole}>
-                    Complete Upgrade
+                  <Button 
+                    className="bg-yellow-500 hover:bg-yellow-600 text-black" 
+                    onClick={handleUpgradeToMultiRole}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      "Submit Request"
+                    )}
                   </Button>
                 </div>
               </CardContent>

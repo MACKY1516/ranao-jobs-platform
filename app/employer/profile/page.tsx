@@ -20,6 +20,7 @@ import { RoleSwitcher } from "@/components/role-switcher"
 import { getUserProfile, updateCompanyProfile, requestMultiRoleUpgrade } from "@/lib/users"
 import { useToast } from "@/components/ui/use-toast"
 import { uploadEmployerLogo, uploadEmployerCoverImage } from "@/lib/fileUpload"
+import { addEmployerActivity } from "@/lib/notifications"
 
 export default function EmployerProfilePage() {
   const router = useRouter()
@@ -300,31 +301,20 @@ export default function EmployerProfilePage() {
     }
   }, [isLoading]);
 
+  // Handle saving the employer profile
   const handleSaveProfile = async () => {
-    if (!userData) return
-    
-    setIsSaving(true)
+    if (!userData || isSaving) return;
+
+    setIsSaving(true);
+
     try {
-      let updatedLogoUrl = profileData.logo
-      let updatedCoverImageUrl = profileData.coverImage
-      
-      // Process uploaded logo if exists
-      if (uploadedFiles.logo) {
-        updatedLogoUrl = await uploadEmployerLogo(uploadedFiles.logo, userData.id)
-      }
-      
-      // Process uploaded cover image if exists
-      if (uploadedFiles.coverImage) {
-        updatedCoverImageUrl = await uploadEmployerCoverImage(uploadedFiles.coverImage, userData.id)
-      }
-      
-      // Save company profile to Firestore with updated image URLs
-      await updateCompanyProfile(userData.id, {
+      const updatedData: any = {
         companyName: profileData.companyName,
         industry: profileData.industry,
         companySize: profileData.companySize,
         founded: profileData.founded,
         website: profileData.website,
+        email: profileData.email,
         phone: profileData.phone,
         address: profileData.address,
         city: profileData.city,
@@ -334,50 +324,103 @@ export default function EmployerProfilePage() {
         description: profileData.description,
         benefits: profileData.benefits,
         socialMedia: profileData.socialMedia,
-        logo: updatedLogoUrl,
-        coverImage: updatedCoverImageUrl,
         receiveApplications: profileData.receiveApplications,
         notifyNewApplicants: profileData.notifyNewApplicants,
         publicProfile: profileData.publicProfile,
-      })
-      
-      // Update the main profileData with the new URLs
-      const updatedProfileData = {
-        ...profileData,
-        logo: updatedLogoUrl,
-        coverImage: updatedCoverImageUrl
       };
+
+      // Only include logo and coverImage in update if files were uploaded
+      if (uploadedFiles.logo && previewData.logo !== initialProfileData.logo) {
+         // Assuming upload function returns the URL
+        const logoUrl = await uploadEmployerLogo(uploadedFiles.logo, userData.id);
+        updatedData.logo = logoUrl;
+      }
+
+      if (uploadedFiles.coverImage && previewData.coverImage !== initialProfileData.coverImage) {
+        // Assuming upload function returns the URL
+        const coverImageUrl = await uploadEmployerCoverImage(uploadedFiles.coverImage, userData.id);
+        updatedData.coverImage = coverImageUrl;
+      }
+
+      await updateCompanyProfile(userData.id, updatedData);
+
+      // Identify changes for activity logging
+      const changes: Record<string, any> = {};
+      // Compare current profileData with initialProfileData to find changes
+      for (const key in profileData) {
+        if (Object.prototype.hasOwnProperty.call(profileData, key)) {
+          const current = (profileData as any)[key];
+          const initial = (initialProfileData as any)[key];
+
+          // Handle different types of data
+          if (key === 'socialMedia') {
+            // Compare social media objects
+            const socialMediaChanges: Record<string, string> = {};
+            if (current.linkedin !== initial.linkedin) socialMediaChanges.linkedin = current.linkedin;
+            if (current.facebook !== initial.facebook) socialMediaChanges.facebook = current.facebook;
+            if (current.twitter !== initial.twitter) socialMediaChanges.twitter = current.twitter;
+            if (Object.keys(socialMediaChanges).length > 0) changes[key] = socialMediaChanges;
+          } else if (Array.isArray(current)) {
+             // Simple array comparison (checks if content is different)
+             // Note: This is a basic check and might not detect changes in order or nested objects within arrays
+             if (JSON.stringify(current) !== JSON.stringify(initial)) {
+                 changes[key] = current; // Store the new array content
+             }
+          } else if (current !== initial) {
+            // Compare primitive types
+            changes[key] = current;
+          }
+        }
+      }
       
-      setProfileData(updatedProfileData);
-      
-      // Update initialProfileData to match current data
-      setInitialProfileData(updatedProfileData);
-      
-      // Clear uploaded files state
+      // Include changes from uploaded files if they resulted in URL updates
+      if (updatedData.logo && updatedData.logo !== initialProfileData.logo) {
+          changes.logo = updatedData.logo;
+      }
+       if (updatedData.coverImage && updatedData.coverImage !== initialProfileData.coverImage) {
+          changes.coverImage = updatedData.coverImage;
+      }
+
+      // After successful update, record activity
+      // Only log activity if there were actual changes
+      if (Object.keys(changes).length > 0) {
+        await addEmployerActivity(
+          userData.id,
+          "profile_update", // Using a specific type for profile updates
+          `Employer ${userData.firstName || ''} ${userData.lastName || ''} updated their company profile`,
+          {
+            companyName: updatedData.companyName,
+            email: userData.email,
+            changes: changes // Include the detected changes in metadata
+          }
+        );
+      }
+
+      toast({
+        title: "Success",
+        description: "Profile updated successfully.",
+        variant: "default",
+      });
+
+      // Reset unsaved changes state and update initial data
+      setHasUnsavedChanges(false);
+      setInitialProfileData(profileData);
       setUploadedFiles({
         logo: null,
         coverImage: null
-      })
-      
-      // Reset unsaved changes flag
-      setHasUnsavedChanges(false)
-      
-      toast({
-        title: "Success",
-        description: "Company profile saved successfully",
-      })
-      
+      }); // Clear uploaded files state
+
     } catch (error) {
-      console.error("Error saving profile:", error)
+      console.error("Error saving profile:", error);
       toast({
         title: "Error",
-        description: "Failed to save your profile",
+        description: "Failed to save profile. Please try again.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   const handleRequestMultiRole = async () => {
     if (!userData) return
