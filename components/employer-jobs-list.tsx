@@ -20,7 +20,7 @@ import {
   Briefcase,
   Calendar,
   Clock,
-  DollarSign,
+  PhilippinePeso,
   Edit,
   MapPin,
   MoreHorizontal,
@@ -281,7 +281,7 @@ export function EmployerJobsList() {
                           <span>{job.type}</span>
                         </div>
                         <div className="flex items-center text-gray-500">
-                          <DollarSign className="h-4 w-4 mr-2" />
+                          <PhilippinePeso className="h-4 w-4 mr-2" />
                           <span>{job.salary}</span>
                         </div>
                         <div className="flex items-center text-gray-500">

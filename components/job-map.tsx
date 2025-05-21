@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Briefcase, Building, MapPin, Clock, DollarSign, Calendar } from "lucide-react"
+import { Briefcase, Building, MapPin, Clock, PhilippinePeso, Calendar } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { JobMapComponent } from "./job-map-component"
 import { AuthCheckModal } from "./auth-check-modal"
@@ -25,9 +25,11 @@ interface Job {
 interface JobMapProps {
   jobs: Job[]
   height?: string
+  initialCenter?: [number, number]
+  initialZoom?: number
 }
 
-export function JobMap({ jobs, height = "500px" }: JobMapProps) {
+export function JobMap({ jobs, height = "500px", initialCenter, initialZoom }: JobMapProps) {
   const router = useRouter()
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
@@ -87,7 +89,12 @@ export function JobMap({ jobs, height = "500px" }: JobMapProps) {
 
   return (
     <div className="relative w-full" style={{ height }}>
-      <JobMapComponent jobs={jobs} onMarkerClick={handleMarkerClick} />
+      <JobMapComponent 
+        jobs={jobs} 
+        onMarkerClick={handleMarkerClick} 
+        initialCenter={initialCenter}
+        initialZoom={initialZoom}
+      />
 
       {selectedJob && (
         <Card className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-white shadow-lg z-20">
@@ -124,7 +131,7 @@ export function JobMap({ jobs, height = "500px" }: JobMapProps) {
 
             {selectedJob.salary && (
               <div className="flex items-center text-sm text-gray-600 mb-1">
-                <DollarSign className="h-3.5 w-3.5 mr-1 text-gray-500" />
+                <PhilippinePeso className="h-3.5 w-3.5 mr-1 text-gray-500" />
                 <span>{selectedJob.salary}</span>
               </div>
             )}

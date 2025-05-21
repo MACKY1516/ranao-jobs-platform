@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useState, useEffect } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
@@ -14,7 +15,7 @@ import {
   MapPin,
   Calendar,
   Clock,
-  DollarSign,
+  PhilippinePeso,
   Briefcase,
   GraduationCap,
   Users,
@@ -22,13 +23,15 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
-export default function JobDetailsPage({ params }: { params: { id: string } }) {
+export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
   const [isLoading, setIsLoading] = useState(true)
   const [userRole, setUserRole] = useState<string | null>(null)
 
   // Mock job data - in a real app, this would come from an API
   const job = {
-    id: params.id,
+    id: jobId,
     title: "Senior Frontend Developer",
     company: "Tech Solutions Inc.",
     companyId: "1",
@@ -144,7 +147,7 @@ export default function JobDetailsPage({ params }: { params: { id: string } }) {
               <span>Deadline: {job.deadline}</span>
             </div>
             <div className="flex items-center">
-              <DollarSign className="h-5 w-5 mr-2 text-green-400" />
+              <PhilippinePeso className="h-5 w-5 mr-2 text-green-400" />
               <span className="text-green-400 font-medium">{job.salary}</span>
             </div>
           </div>

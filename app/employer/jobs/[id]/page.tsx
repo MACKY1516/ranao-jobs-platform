@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getJobPosting, JobPosting } from "@/lib/jobs"
@@ -13,7 +14,7 @@ import {
   Calendar,
   Clock,
   Briefcase,
-  DollarSign,
+  PhilippinePeso,
   Mail,
   Phone,
   Edit,
@@ -21,7 +22,9 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 
-export default function JobDetailPage({ params }: { params: { id: string } }) {
+export default function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = React.use(params)
+  const jobId = unwrappedParams.id
   const router = useRouter()
   const [job, setJob] = useState<JobPosting | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -46,11 +49,12 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
 
     setUserData(user)
 
-    // Fetch job details
     const fetchJob = async () => {
       try {
-        const jobData = await getJobPosting(params.id)
-        setJob(jobData)
+        const jobData = await getJobPosting(jobId)
+        if (jobData) {
+          setJob(jobData)
+        }
       } catch (error) {
         console.error("Error fetching job:", error)
       } finally {
@@ -59,7 +63,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
     }
 
     fetchJob()
-  }, [params.id, router])
+  }, [jobId, router])
 
   const formatDate = (dateString: any) => {
     if (!dateString) return "Not specified"
@@ -148,7 +152,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
               <div className="flex flex-col">
                 <span className="text-sm text-gray-500">Salary</span>
                 <div className="flex items-center">
-                  <DollarSign className="h-4 w-4 mr-1 text-gray-600" />
+                  <PhilippinePeso className="h-4 w-4 mr-1 text-gray-600" />
                   <span className="font-medium">{job.salary || "Not specified"}</span>
                 </div>
               </div>
