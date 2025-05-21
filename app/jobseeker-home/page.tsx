@@ -10,10 +10,23 @@ import { Badge } from "@/components/ui/badge"
 import { NavBar } from "@/components/nav-bar"
 import { Footer } from "@/components/footer"
 import { AuthCheckModal } from "@/components/auth-check-modal"
-import { Briefcase, MapPin, Upload, AlertCircle, MapIcon, User, Clock } from "lucide-react"
+import { Briefcase, MapPin, Upload, AlertCircle, MapIcon, User, Clock, Bell } from "lucide-react"
 import Link from "next/link"
 import { calculateJobseekerProfileCompletion } from "@/lib/profileCompletion"
 import { getUserProfile } from "@/lib/users"
+import { getRecentJobPostings } from "@/lib/jobs"
+import { JobseekerNotificationDropdown } from "@/components/jobseeker-notification-dropdown"
+
+interface Job {
+  id: string;
+  title: string;
+  company: string;
+  match: number;
+  location: string;
+  type: string;
+  posted: string;
+  salary: string;
+}
 
 export default function JobseekerHomePage() {
   const router = useRouter()
@@ -22,48 +35,7 @@ export default function JobseekerHomePage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [profileCompletion, setProfileCompletion] = useState(0)
   const [hasResume, setHasResume] = useState(false)
-  const [suggestedJobs, setSuggestedJobs] = useState([
-    {
-      id: "1",
-      title: "Senior Frontend Developer",
-      company: "Tech Solutions Inc.",
-      location: "Marawi City",
-      salary: "₱60,000 - ₱80,000",
-      type: "Full-time",
-      posted: "2 days ago",
-      match: 95,
-    },
-    {
-      id: "2",
-      title: "UX Designer",
-      company: "Creative Minds",
-      location: "Iligan City",
-      salary: "₱45,000 - ₱60,000",
-      type: "Full-time",
-      posted: "3 days ago",
-      match: 88,
-    },
-    {
-      id: "3",
-      title: "Backend Developer",
-      company: "Digital Solutions",
-      location: "Cagayan de Oro",
-      salary: "₱55,000 - ₱75,000",
-      type: "Full-time",
-      posted: "1 week ago",
-      match: 82,
-    },
-    {
-      id: "4",
-      title: "Project Manager",
-      company: "Innovative Systems",
-      location: "Remote",
-      salary: "₱70,000 - ₱90,000",
-      type: "Contract",
-      posted: "1 week ago",
-      match: 78,
-    },
-  ])
+  const [suggestedJobs, setSuggestedJobs] = useState<Job[]>([])
 
   useEffect(() => {
     // Check if user is logged in
@@ -101,10 +73,24 @@ export default function JobseekerHomePage() {
         // Calculate profile completion percentage
         const completionPercentage = await calculateJobseekerProfileCompletion(user.id);
         setProfileCompletion(completionPercentage);
+
+        // Fetch recent jobs
+        const recentJobs = await getRecentJobPostings(6); // Get 6 most recent jobs
+        const formattedJobs = recentJobs.map(job => ({
+          id: job.id || '', // Ensure id is always a string
+          title: job.title,
+          company: job.companyName,
+          match: 85, // This could be calculated based on job requirements and user profile
+          location: job.location,
+          type: job.type,
+          posted: new Date(job.createdAt?.toDate()).toLocaleDateString(),
+          salary: job.salary
+        }));
+        setSuggestedJobs(formattedJobs);
         
         setIsLoading(false);
       } catch (error) {
-        console.error("Error fetching profile data:", error);
+        console.error("Error fetching data:", error);
         setIsLoading(false);
       }
     };
@@ -153,17 +139,14 @@ export default function JobseekerHomePage() {
               <AlertDescription className="text-yellow-700 dark:text-yellow-300">
                 You haven't uploaded your resume yet — Upload now to attract more employers.
               </AlertDescription>
-              <Button className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-black" size="sm">
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Resume
-              </Button>
+            
             </Alert>
           )}
 
           {/* Quick Actions */}
           <div className="bg-white rounded-lg shadow-md p-6 mb-6 dark:bg-gray-800">
             <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 items-center">
               <Link href="/jobseeker/applications">
                 <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">
                   <Briefcase className="mr-2 h-4 w-4" />
@@ -182,6 +165,7 @@ export default function JobseekerHomePage() {
                   Edit Profile
                 </Button>
               </Link>
+             
             </div>
           </div>
 

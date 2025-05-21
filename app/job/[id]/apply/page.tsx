@@ -15,6 +15,9 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Upload, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthCheckModal } from "@/components/auth-check-modal"
+import { addEmployerActivity } from "@/lib/notifications"
+import { getDoc, doc } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 export default function ApplyJobPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = React.use(params)
@@ -129,15 +132,42 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
 
     try {
       // Mock API call - in a real app, this would be an API call
-      setTimeout(() => {
-        setSuccessMessage("Your application has been submitted successfully!")
-        setIsSubmitting(false)
+
+      // In a real implementation, you would save the application to Firestore here.
+      // After successfully saving the application and getting the employerId,
+      // you would call addEmployerActivity.
+
+      // Example (replace with your actual application saving logic):
+      // const applicationRef = await addDoc(collection(db, "applications"), { /* application data */ });
+      // const jobDoc = await getDoc(doc(db, "jobs", params.id));
+      // const employerId = jobDoc.data().employerId;
+
+      // For now, calling within the mock timeout:
+      setTimeout(async () => {
+        setSuccessMessage("Your application has been submitted successfully!");
+        setIsSubmitting(false);
+
+        // Add activity for the employer
+        // NOTE: Replace 'placeholder_employer_id' with the actual employerId fetched from job data
+        try {
+          const jobDoc = await getDoc(doc(db, "jobs", params.id));
+          if (jobDoc.exists()) {
+            const jobData = jobDoc.data();
+            await addEmployerActivity(
+              jobData.employerId,
+              "application",
+              `New application received for your job posting: ${jobData.title}`
+            );
+          }
+        } catch (activityError) {
+          console.error("Error adding employer activity for new application:", activityError);
+        }
 
         // Redirect after 2 seconds
         setTimeout(() => {
           router.push("/jobseeker-dashboard")
-        }, 2000)
-      }, 1500)
+        }, 2000);
+      }, 1500);
     } catch (err) {
       setError("An error occurred while submitting your application. Please try again.")
       setIsSubmitting(false)

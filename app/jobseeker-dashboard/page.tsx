@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RoleSwitcher } from "@/components/role-switcher"
 import { Building2, LogOut, Search, User } from "lucide-react"
 import Link from "next/link"
+import { recordActivity } from "@/lib/activity-logger"
 
 export default function JobseekerDashboard() {
   const router = useRouter()
@@ -39,7 +40,23 @@ export default function JobseekerDashboard() {
     setIsLoading(false)
   }, [router])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const userData = localStorage.getItem("ranaojobs_user")
+    if (userData) {
+      const user = JSON.parse(userData)
+      // Record logout activity before clearing data
+      await recordActivity(
+        user.id,
+        "logout",
+        "User logged out",
+        {
+          role: user.role,
+          activeRole: user.activeRole || user.role,
+          email: user.email
+        }
+      )
+    }
+
     localStorage.removeItem("ranaojobs_user")
     router.push("/login")
   }

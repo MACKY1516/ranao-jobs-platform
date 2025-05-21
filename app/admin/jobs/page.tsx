@@ -13,7 +13,8 @@ import {
   CheckCircle, 
   XCircle 
 } from "lucide-react"
-import { getVerifiedJobs, getPendingJobVerifications } from "@/lib/jobs"
+import { collection, getDocs, query, orderBy } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 import { format } from "date-fns"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -55,44 +56,29 @@ export default function AdminJobsPage() {
     const loadJobs = async () => {
       setIsLoading(true)
       try {
-        // Get all verified jobs (both approved and rejected)
-        const verifiedData = await getVerifiedJobs()
+        // Get all jobs from Firestore
+        const jobsQuery = query(
+          collection(db, "jobs"),
+          orderBy("createdAt", "desc")
+        )
         
-        // Get all pending verification jobs
-        const pendingData = await getPendingJobVerifications()
+        const jobsSnap = await getDocs(jobsQuery)
+        const jobs = jobsSnap.docs.map(doc => ({
+          id: doc.id,
+          title: doc.data().title || "Untitled Job",
+          companyName: doc.data().companyName || "Unknown Company",
+          employerId: doc.data().employerId,
+          location: doc.data().location || "Remote",
+          type: doc.data().type || doc.data().jobType || "Not specified",
+          category: doc.data().category || "Not specified",
+          createdAt: formatTimestamp(doc.data().createdAt),
+          verificationStatus: doc.data().verificationStatus || "unknown",
+          isActive: doc.data().isActive || false,
+          applicationsCount: doc.data().applicationsCount || doc.data().applicationCount || 0
+        }))
         
-        // Combine the data
-        const combinedJobs = [
-          ...verifiedData.map(job => ({
-            id: job.id,
-            title: job.title || "Untitled Job",
-            companyName: job.companyName || "Unknown Company",
-            employerId: job.employerId,
-            location: job.location || "Remote",
-            type: job.type || job.jobType || "Not specified",
-            category: job.category || "Not specified",
-            createdAt: formatTimestamp(job.createdAt),
-            verificationStatus: job.verificationStatus || "unknown",
-            isActive: job.isActive || false,
-            applicationsCount: job.applicationsCount || job.applicationCount || 0
-          })),
-          ...pendingData.map(job => ({
-            id: job.id,
-            title: job.title || "Untitled Job",
-            companyName: job.companyName || "Unknown Company",
-            employerId: job.employerId,
-            location: job.location || "Remote",
-            type: job.type || job.jobType || "Not specified",
-            category: job.category || "Not specified",
-            createdAt: formatTimestamp(job.createdAt),
-            verificationStatus: "pending",
-            isActive: job.isActive || false,
-            applicationsCount: job.applicationsCount || job.applicationCount || 0
-          }))
-        ]
-        
-        setAllJobs(combinedJobs)
-        setFilteredJobs(combinedJobs)
+        setAllJobs(jobs)
+        setFilteredJobs(jobs)
       } catch (err) {
         console.error("Error loading jobs:", err)
         error("Failed to load jobs data")
@@ -196,9 +182,6 @@ export default function AdminJobsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Jobs</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="active">Active</SelectItem>
               <SelectItem value="inactive">Inactive</SelectItem>
             </SelectContent>
@@ -228,11 +211,7 @@ export default function AdminJobsPage() {
                   { key: "companyName", title: "Company" },
                   { key: "type", title: "Type" },
                   { key: "location", title: "Location" },
-                  { 
-                    key: "verificationStatus", 
-                    title: "Verification",
-                    render: (_, row) => getVerificationBadge(row.verificationStatus)
-                  },
+                  
                   { 
                     key: "isActive", 
                     title: "Status",
@@ -246,7 +225,7 @@ export default function AdminJobsPage() {
                   },
                 ]}
                 data={filteredJobs}
-                searchable={false} // We're handling search ourselves
+                searchable={false}
                 actions={[
                   {
                     label: "View Details",

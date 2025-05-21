@@ -87,13 +87,13 @@ export async function updateCompanyProfile(userId: string, companyData: any): Pr
  * @param userId The ID of the user requesting the upgrade
  * @param jobseekerData The jobseeker profile data
  */
-export async function requestMultiRoleUpgrade(userId: string, jobseekerData: any): Promise<void> {
+export async function requestMultiRoleUpgrade(userId: string, additionalData: any, isJobseeker: boolean = true): Promise<void> {
   try {
     const userRef = doc(db, "users", userId)
     
     // Add updated timestamp, set request flag and role to 'multi-role' (pending verification)
     const updatedData = {
-      ...jobseekerData,
+      ...additionalData,
       role: "multi-role", // Change role to multi-role (pending verification)
       multiRoleRequested: true,
       multiRoleRequestDate: serverTimestamp(),
@@ -106,13 +106,18 @@ export async function requestMultiRoleUpgrade(userId: string, jobseekerData: any
     const { addAdminNotification } = await import("@/lib/notifications")
     
     // Notify admins about the request
+    const sourceRole = isJobseeker ? "jobseeker" : "employer"
+    const message = isJobseeker ? 
+      `A jobseeker has requested to upgrade to a multi-role account.` :
+      `An employer has requested to upgrade to a multi-role account.`
+      
     await addAdminNotification(
       "Multi-Role Upgrade Request",
-      `An employer has requested to upgrade to a multi-role account.`,
+      message,
       "info",
       "all",
       `/admin/multirole-requests/${userId}`,
-      "employer",
+      sourceRole,
       userId
     )
   } catch (error) {

@@ -2,12 +2,17 @@
 
 import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import React from "react"
 import { JobPostingForm } from "@/components/job-posting-form"
 import { AuthCheckModal } from "@/components/auth-check-modal"
 import { BackButton } from "@/components/back-button"
 import { getJobPosting } from "@/lib/jobs"
 
-export default function EditJobPage({ params }: { params: Promise<{ id: string }> }) {
+type PageParams = {
+  id: string
+}
+
+export default function EditJobPage({ params }: { params: PageParams }) {
   const router = useRouter()
   
   // Properly unwrap the params Promise using React.use()
@@ -18,6 +23,7 @@ export default function EditJobPage({ params }: { params: Promise<{ id: string }
   const [jobData, setJobData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const jobId = params.id
 
   useEffect(() => {
     // Check if user is logged in

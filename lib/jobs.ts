@@ -16,7 +16,7 @@ import {
   Timestamp,
   increment
 } from "firebase/firestore"
-import { addAdminNotification } from "@/lib/notifications"
+import { addAdminNotification, addEmployerActivity } from "@/lib/notifications"
 
 export interface JobPosting {
   id?: string
@@ -99,10 +99,29 @@ export async function updateJobPosting(jobId: string, jobData: Partial<JobPostin
  */
 export async function deleteJobPosting(jobId: string): Promise<void> {
   try {
-    const jobRef = doc(db, "jobs", jobId)
-    await deleteDoc(jobRef)
+    // Get job data before deleting to get employerId and title
+    const jobSnapshot = await getDoc(doc(db, "jobs", jobId));
+    if (!jobSnapshot.exists()) {
+      throw new Error("Job not found");
+    }
+    const jobData = jobSnapshot.data();
+    const employerId = jobData.employerId;
+    const jobTitle = jobData.title;
+
+    const jobRef = doc(db, "jobs", jobId);
+    await deleteDoc(jobRef);
+
+    // Add activity for the employer
+    if (employerId) {
+      await addEmployerActivity(
+        employerId,
+        "info", // Or perhaps a new type like "job_deleted"
+        `You deleted your job posting: ${jobTitle}`
+      );
+    }
+
   } catch (error) {
-    console.error("Error deleting job posting:", error)
+    console.error("Error deleting job posting:", error);
     throw new Error("Failed to delete job posting")
   }
 }
@@ -162,14 +181,34 @@ export async function getEmployerJobPostings(employerId: string): Promise<JobPos
  */
 export async function toggleJobStatus(jobId: string, isActive: boolean): Promise<void> {
   try {
-    const jobRef = doc(db, "jobs", jobId)
-    
+    const jobRef = doc(db, "jobs", jobId);
+
+    // Get job data before updating to get employerId and title
+    const jobSnapshot = await getDoc(doc(db, "jobs", jobId));
+    if (!jobSnapshot.exists()) {
+      throw new Error("Job not found");
+    }
+    const jobData = jobSnapshot.data();
+    const employerId = jobData.employerId;
+    const jobTitle = jobData.title;
+    const status = isActive ? "activated" : "deactivated";
+
     await updateDoc(jobRef, {
       isActive,
       updatedAt: serverTimestamp()
-    })
+    });
+
+    // Add activity for the employer
+    if (employerId) {
+      await addEmployerActivity(
+        employerId,
+        "info", // Or perhaps a new type like "job_status_change"
+        `Your job posting for ${jobTitle} has been ${status}.`
+      );
+    }
+
   } catch (error) {
-    console.error("Error toggling job status:", error)
+    console.error("Error toggling job status:", error);
     throw new Error("Failed to toggle job status")
   }
 }
@@ -276,6 +315,20 @@ export async function createJob(jobData: any, employerId: string): Promise<strin
       "employer",
       employerId
     )
+
+    // Add activity for the employer
+    await addEmployerActivity(
+      employerId,
+      "job_post",
+      `You posted a new job: ${jobData.title}`,
+      {
+        jobId: jobRef.id,
+        jobTitle: jobData.title,
+        jobType: jobData.type,
+        jobCategory: jobData.category,
+        salary: jobData.salary
+      }
+    )
     
     return jobRef.id
   } catch (error) {
@@ -349,6 +402,13 @@ export async function approveJob(jobId: string, adminId: string): Promise<void> 
         `/employer/jobs/${jobId}`,
         "admin",
         adminId
+      )
+
+      // Add activity for the employer's activity feed
+      await addEmployerActivity(
+        jobData.employerId,
+        "approval",
+        `Your job posting for ${jobData.title} has been approved.`
       )
     }
   } catch (error) {

@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { addAdminNotification } from "@/lib/notifications"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { InfoIcon } from "lucide-react"
+import { addEmployerActivity } from "@/lib/notifications"
 
 
 
@@ -197,6 +198,15 @@ export function JobPostingForm({ initialData, isEdit = false, userData: userData
           description: "Job posting updated successfully",
           variant: "default",
         })
+        
+        // Add activity for the employer when a job is edited
+        if (userData?.id) {
+          await addEmployerActivity(
+            userData.id,
+            "job_edit", // Using a specific type for job edits
+            `You updated your job posting: ${formData.title}`
+          );
+        }
       } else {
         // Create new job
         jobId = await addJobPosting(jobData)
@@ -211,6 +221,15 @@ export function JobPostingForm({ initialData, isEdit = false, userData: userData
           "employer",
           userData.id
         )
+        
+        // Add activity for the employer
+        if (userData?.id) {
+          await addEmployerActivity(
+            userData.id,
+            "job_post", // Changed from "info" to "job_post" to match admin activity filter
+            `You posted a new job: ${formData.title}`
+          )
+        }
         
         toast({
           title: "Success",

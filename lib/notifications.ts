@@ -1,5 +1,41 @@
 import { db } from "@/lib/firebase"
-import { collection, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, addDoc, serverTimestamp, query, where, orderBy, getDocs } from "firebase/firestore"
+
+export interface AdminNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  adminId: string;
+  isRead: boolean;
+  createdAt: any; // Firestore Timestamp
+  link?: string;
+  activityType?: 'jobseeker' | 'employer' | 'admin' | 'system';
+  relatedUserId?: string;
+}
+
+// Define interface for Notifications related to Employers stored in adminNotifications
+export interface EmployerRelatedNotification {
+  id: string; // Document ID
+  title: string;
+  message: string;
+  type: string; // Use string to be flexible with notification types
+  createdAt: any; // Firestore Timestamp
+  link?: string;
+  relatedUserId: string; // The employer's user ID
+  isRead: boolean; // Added isRead property
+  // Include other fields from adminNotifications if needed
+}
+
+// Define interface for Employer Notifications to match the structure stored
+export interface EmployerNotification {
+  id: string;
+  employerId: string;
+  type: string;
+  message: string;
+  createdAt: any; // Firestore Timestamp
+  // Add other fields if they are stored in the activyt_emp collection
+}
 
 /**
  * Add a notification for admin users
@@ -204,4 +240,79 @@ export const notifySystemAlert = async (title: string, message: string) => {
     undefined,
     'system'
   )
+}
+
+/**
+ * Add an activity for an employer
+ * @param employerId The ID of the employer
+ * @param type The type of activity (application, approval, info)
+ * @param message The activity message
+ * @param metadata Optional metadata related to the activity (e.g., changes)
+ */
+export const addEmployerActivity = async (employerId: string, type: string, message: string, metadata: Record<string, any> = {}) => {
+  try {
+    // Add to activity_log_all collection
+    await addDoc(collection(db, "activity_log_all"), {
+      userId: employerId,
+      type,
+      description: message,
+      timestamp: serverTimestamp(),
+      metadata: {
+        role: "employer"
+      }
+    })
+
+    // Add to activity_emp collection
+    await addDoc(collection(db, "activity_emp"), {
+      employerId,
+      type,
+      message,
+      createdAt: serverTimestamp(),
+      metadata
+    })
+
+    return true
+  } catch (error) {
+    console.error("Error adding employer activity:", error)
+    return false
+  }
+}
+
+/**
+ * Fetch notifications for a specific employer
+ * @param employerId The ID of the employer
+ * @returns A promise resolving to an array of EmployerRelatedNotification
+ */
+export const getEmployerNotifications = async (employerId: string): Promise<EmployerRelatedNotification[]> => {
+  try {
+    // Use employernotifications collection instead of adminNotifications
+    const notificationsRef = collection(db, "employernotifications");
+    const q = query(
+      notificationsRef,
+      where("employerId", "==", employerId),
+      orderBy("createdAt", "desc")
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const notificationsList = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        title: data.title || "Notification",
+        message: data.message || "",
+        type: data.type || "system",
+        createdAt: data.createdAt,
+        link: data.link || null,
+        relatedUserId: employerId, // Map to match interface
+        isRead: data.isRead || false
+      } as EmployerRelatedNotification;
+    });
+    
+    console.log(`Fetched ${notificationsList.length} notifications for employer ${employerId}`);
+    return notificationsList;
+    
+  } catch (error) {
+    console.error("Error fetching employer notifications:", error);
+    throw error;
+  }
 } 
