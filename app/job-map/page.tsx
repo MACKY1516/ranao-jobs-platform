@@ -43,6 +43,12 @@ export default function JobMapPage() {
   const [userRole, setUserRole] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
   const [mapZoom, setMapZoom] = useState(10) // Default to regional zoom level
+  const [mounted, setMounted] = useState(false)
+
+  // Mark component as mounted on client side
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Get user's location
   useEffect(() => {
@@ -228,6 +234,11 @@ export default function JobMapPage() {
   // If user is an employer, redirect to find-jobs
   if (isLoggedIn && userRole === "employer") {
     return null // Will redirect in useEffect
+  }
+
+  // Don't render during SSR to prevent hydration mismatch
+  if (typeof window === "undefined" || !mounted) {
+    return null
   }
 
   return (

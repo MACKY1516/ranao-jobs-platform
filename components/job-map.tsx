@@ -85,7 +85,9 @@ export function JobMap({ jobs, height = "500px", initialCenter, initialZoom }: J
   }
 
   // Don't render during SSR to prevent hydration mismatch
-  if (!mounted) return null
+  if (typeof window === "undefined" || !mounted) {
+    return null
+  }
 
   return (
     <div className="relative w-full" style={{ height }}>

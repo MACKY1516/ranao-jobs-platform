@@ -30,6 +30,13 @@ interface JobData {
   postedAt: string | Timestamp
   deadline: string
   tags: string[]
+  employerName?: string // Add this to fix TypeScript error
+}
+
+// Helper function to format location
+const formatLocation = (location: string | undefined): string => {
+  if (!location) return "Location not specified";
+  return location;
 }
 
 export function JobCard({ variant = "default", jobId, companyId }: JobCardProps) {
@@ -99,7 +106,8 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
             salary: jobData.salary || "Not specified",
             postedAt: jobData.postedAt || "Recently",
             deadline: jobData.deadline || "",
-            tags: jobData.tags || []
+            tags: jobData.tags || [],
+            employerName: jobData.employerName || jobData.company || "Unknown Company"
           })
         } else {
           console.log(`Job not found: ${jobId}`)
