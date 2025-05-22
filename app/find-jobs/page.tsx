@@ -393,8 +393,6 @@ export default function FindJobsPage() {
                   ))}
                 </div>
               ) : (
-                <>
-                  {jobs.length > 0 ? (
                 <div className="grid grid-cols-1 gap-6">
                   {filteredJobs.length > 0 ? (
                     currentJobs.map((job) => (
@@ -406,8 +404,6 @@ export default function FindJobsPage() {
                     </div>
                   )}
                 </div>
-                  )}
-                </>
               )}
 
               {/* Pagination */}

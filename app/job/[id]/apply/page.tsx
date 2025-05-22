@@ -139,7 +139,7 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
 
       // Example (replace with your actual application saving logic):
       // const applicationRef = await addDoc(collection(db, "applications"), { /* application data */ });
-      // const jobDoc = await getDoc(doc(db, "jobs", params.id));
+      // const jobDoc = await getDoc(doc(db, "jobs", jobId));
       // const employerId = jobDoc.data().employerId;
 
       // For now, calling within the mock timeout:
@@ -150,7 +150,7 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
         // Add activity for the employer
         // NOTE: Replace 'placeholder_employer_id' with the actual employerId fetched from job data
         try {
-          const jobDoc = await getDoc(doc(db, "jobs", params.id));
+          const jobDoc = await getDoc(doc(db, "jobs", jobId));
           if (jobDoc.exists()) {
             const jobData = jobDoc.data();
             await addEmployerActivity(
