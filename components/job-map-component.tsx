@@ -4,22 +4,9 @@ import { useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import "leaflet/dist/leaflet.css"
 
-// Dynamically import Leaflet with no SSR to prevent window not defined errors
-const LeafletMap = dynamic(
-  () => import("leaflet").then(mod => {
-    // Fix Leaflet icon issues after import
-    delete (mod.Icon.Default.prototype as any)._getIconUrl
-
-    mod.Icon.Default.mergeOptions({
-      iconRetinaUrl: "/images/marker-icon.png",
-      iconUrl: "/images/marker-icon.png",
-      shadowUrl: "/images/marker-shadow.png",
-    })
-    
-    return mod
-  }),
-  { ssr: false }
-)
+// No dynamic import for Leaflet here - we'll import it directly in useEffect
+// Add type for Leaflet
+type LeafletType = any;
 
 interface JobMapComponentProps {
   jobs: any[]
@@ -39,7 +26,7 @@ export function JobMapComponent({
   const markersRef = useRef<any[]>([])
   const [isMapReady, setIsMapReady] = useState(false)
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null)
-  const [L, setL] = useState<any>(null) // Store Leaflet instance
+  const [L, setL] = useState<LeafletType | null>(null) // Store Leaflet instance
 
   // Get user's location
   useEffect(() => {
@@ -61,13 +48,31 @@ export function JobMapComponent({
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    // Load Leaflet dynamically
-    LeafletMap.then(leaflet => {
-      setL(leaflet)
-    }).catch(err => {
-      console.error("Failed to load Leaflet:", err)
-    })
-  }, [])
+    // Import Leaflet directly
+    const importLeaflet = async () => {
+      try {
+        const leafletModule = await import("leaflet");
+        
+        // Fix icon issues - type everything as any to avoid TypeScript errors
+        const leaflet = leafletModule as any;
+        
+        // Fix default icon issues
+        delete leaflet.Icon.Default.prototype._getIconUrl;
+        
+        leaflet.Icon.Default.mergeOptions({
+          iconRetinaUrl: "/images/marker-icon.png",
+          iconUrl: "/images/marker-icon.png",
+          shadowUrl: "/images/marker-shadow.png",
+        });
+        
+        setL(leaflet);
+      } catch (err) {
+        console.error("Failed to load Leaflet:", err);
+      }
+    };
+    
+    importLeaflet();
+  }, []);
 
   // Initialize map when Leaflet is loaded
   useEffect(() => {

@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 interface EmployerRatingProps {
   employerId: string
@@ -19,6 +21,8 @@ interface EmployerRatingProps {
   initialRating?: number
   showRatingButton?: boolean
   size?: "sm" | "md" | "lg"
+  directMode?: boolean
+  onRatingSubmit?: (rating: number, feedback: string, anonymous: boolean) => void
 }
 
 export function EmployerRating({
@@ -27,11 +31,14 @@ export function EmployerRating({
   initialRating = 0,
   showRatingButton = true,
   size = "md",
+  directMode = false,
+  onRatingSubmit,
 }: EmployerRatingProps) {
   const [rating, setRating] = useState(initialRating)
   const [hoverRating, setHoverRating] = useState(0)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [feedback, setFeedback] = useState("")
+  const [isAnonymous, setIsAnonymous] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [hasRated, setHasRated] = useState(initialRating > 0)
   const [showThankYou, setShowThankYou] = useState(false)
@@ -44,7 +51,16 @@ export function EmployerRating({
   }[size]
 
   const handleRatingSubmit = () => {
+    if (rating === 0) return;
+    
     setIsSubmitting(true)
+
+    // If in direct mode and onRatingSubmit callback provided, use that
+    if (directMode && onRatingSubmit) {
+      onRatingSubmit(rating, feedback, isAnonymous);
+      setIsSubmitting(false);
+      return;
+    }
 
     // Simulate API call to save rating
     setTimeout(() => {
@@ -75,13 +91,54 @@ export function EmployerRating({
           <Star
             key={index}
             size={starSize}
-            className={`${isFilled ? "text-yellow-500 fill-yellow-500" : "text-gray-300"} transition-colors`}
+            className={`${isFilled ? "text-yellow-500 fill-yellow-500" : "text-gray-300"} transition-colors ${interactive ? 'cursor-pointer' : ''}`}
             onClick={interactive ? () => setRating(starValue) : undefined}
             onMouseEnter={interactive ? () => setHoverRating(starValue) : undefined}
             onMouseLeave={interactive ? () => setHoverRating(0) : undefined}
           />
         )
       })
+  }
+
+  // Render in direct mode - just the rating UI without dialog wrapper
+  if (directMode) {
+    return (
+      <div className="flex flex-col items-center py-4 space-y-4 w-full">
+        <div className="flex items-center space-x-1">{renderStars(true)}</div>
+
+        <Textarea
+          placeholder="Share your experience with this employer"
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          className="w-full"
+          rows={4}
+        />
+
+        <div className="flex items-center space-x-2 w-full">
+          <Switch
+            id="anonymous"
+            checked={isAnonymous}
+            onCheckedChange={setIsAnonymous}
+          />
+          <Label htmlFor="anonymous">Post anonymously</Label>
+        </div>
+
+        <Button
+          className="w-full bg-yellow-500 hover:bg-yellow-600 text-black"
+          onClick={handleRatingSubmit}
+          disabled={rating === 0 || isSubmitting}
+        >
+          {isSubmitting ? (
+            <span className="flex items-center">
+              <span className="animate-spin mr-2 h-4 w-4 border-2 border-b-transparent border-white rounded-full"></span>
+              Submitting...
+            </span>
+          ) : (
+            "Submit Rating"
+          )}
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -122,6 +179,15 @@ export function EmployerRating({
               onChange={(e) => setFeedback(e.target.value)}
               className="w-full"
             />
+            
+            <div className="flex items-center space-x-2 w-full">
+              <Switch
+                id="anonymous-dialog"
+                checked={isAnonymous}
+                onCheckedChange={setIsAnonymous}
+              />
+              <Label htmlFor="anonymous-dialog">Post anonymously</Label>
+            </div>
           </div>
 
           <DialogFooter className="flex space-x-2 sm:justify-end">

@@ -50,26 +50,17 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
   // Check if user is jobseeker
   useEffect(() => {
     setMounted(true)
+    // Only run this on client-side
+    if (typeof window !== 'undefined') {
     const userData = localStorage.getItem("ranaojobs_user")
     if (userData) {
       try {
         const user = JSON.parse(userData)
         setIsJobseeker(user.role === "jobseeker" || (user.role === "multi" && user.activeRole === "jobseeker"))
-      } catch (error) {
-        console.error("Error parsing user data:", error)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    // Check user role from localStorage
-    const storedUser = localStorage.getItem("ranaojobs_user")
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser)
         setUserRole(user.activeRole || user.role)
       } catch (error) {
         console.error("Error parsing user data:", error)
+        }
       }
     }
   }, [])
@@ -240,12 +231,7 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
                   </Button>
                 </Link>
 
-                <Link href={`/employer/${job.companyId || companyId}`}>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    <ExternalLink className="h-4 w-4" />
-                    View Profile
-                  </Button>
-                </Link>
+                
 
                 {isJobseeker && (
                   <Link href={`/job/${job.id}/apply`}>

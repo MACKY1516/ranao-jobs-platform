@@ -37,6 +37,24 @@ export interface EmployerNotification {
   // Add other fields if they are stored in the activyt_emp collection
 }
 
+// Define interface for Jobseeker Notifications
+export interface JobseekerNotification {
+  id: string;
+  jobseekerId: string;
+  title: string;
+  message: string;
+  type: string;
+  createdAt: any; // Firestore Timestamp
+  isRead: boolean;
+  link?: string;
+  applicationId?: string;
+  applicationStatus?: string;
+  relatedJob?: {
+    id: string;
+    title: string;
+  };
+}
+
 /**
  * Add a notification for admin users
  * @param title Title of the notification
@@ -243,6 +261,129 @@ export const notifySystemAlert = async (title: string, message: string) => {
 }
 
 /**
+ * Add a notification for an employer
+ * @param employerId The ID of the employer
+ * @param title Title of the notification
+ * @param message Message content
+ * @param type Type of notification (application, job, message, etc.)
+ * @param link Optional link to redirect when clicking the notification
+ * @returns Promise<boolean> indicating success or failure
+ */
+export const addEmployerNotification = async (
+  employerId: string,
+  title: string,
+  message: string,
+  type: string = "system",
+  link?: string | null,
+  additionalData: Record<string, any> = {}
+) => {
+  try {
+    // Create notification document with required fields
+    const notificationData: Record<string, any> = {
+      employerId,
+      title,
+      message,
+      type,
+      isRead: false,
+      createdAt: serverTimestamp(),
+    };
+    
+    // Only add the link field if it's not undefined or null
+    if (link !== undefined && link !== null) {
+      notificationData.link = link;
+    }
+    
+    // Filter out any undefined values in additionalData
+    const filteredAdditionalData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(additionalData)) {
+      if (value !== undefined) {
+        filteredAdditionalData[key] = value;
+      }
+    }
+    
+    // Add filtered additional data
+    await addDoc(collection(db, "employernotifications"), {
+      ...notificationData,
+      ...filteredAdditionalData
+    });
+    
+    return true;
+  } catch (error) {
+    console.error("Error adding employer notification:", error);
+    return false;
+  }
+}
+
+/**
+ * Add a notification for a jobseeker
+ * @param jobseekerId The ID of the jobseeker
+ * @param title Title of the notification
+ * @param message Message content
+ * @param type Type of notification (application, job, profile, alert, system)
+ * @param link Optional link to redirect when clicking the notification
+ * @param additionalData Additional data to include in the notification
+ * @returns Promise<boolean> indicating success or failure
+ */
+export const addJobseekerNotification = async (
+  jobseekerId: string,
+  title: string,
+  message: string,
+  type: string = "system",
+  link?: string | null,
+  additionalData: Record<string, any> = {}
+) => {
+  try {
+    if (!jobseekerId) {
+      console.error("Error: jobseekerId is required for addJobseekerNotification");
+      return false;
+    }
+
+    // Create notification document with required fields
+    const notificationData: Record<string, any> = {
+      jobseekerId,
+      title,
+      message,
+      type,
+      isRead: false,
+      createdAt: serverTimestamp(),
+    };
+    
+    // Only add the link field if it's not undefined or null
+    if (link !== undefined && link !== null) {
+      notificationData.link = link;
+    }
+    
+    // Filter out any undefined values in additionalData
+    const filteredAdditionalData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(additionalData)) {
+      if (value !== undefined) {
+        filteredAdditionalData[key] = value;
+      }
+    }
+    
+    console.log("Creating jobseeker notification with data:", {
+      ...notificationData,
+      ...filteredAdditionalData
+    });
+    
+    // Ensure the collection exists and add the document
+    const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+    const docRef = await addDoc(jobseekerNotificationsRef, {
+      ...notificationData,
+      ...filteredAdditionalData
+    });
+    
+    console.log(`Successfully created notification with ID: ${docRef.id}`);
+    
+    return true;
+  } catch (error) {
+    console.error("Error adding jobseeker notification:", error);
+    // Return false instead of throwing to prevent cascading errors
+    return false;
+  }
+}
+
+/**
  * Add an activity for an employer
  * @param employerId The ID of the employer
  * @param type The type of activity (application, approval, info)
@@ -271,10 +412,284 @@ export const addEmployerActivity = async (employerId: string, type: string, mess
       metadata
     })
 
+    // If this is a job application, also create a notification
+    if (type === "application") {
+      // Extract job info from metadata if available
+      const jobId = metadata.jobId || "";
+      const applicantId = metadata.applicantId || "";
+      const applicantName = metadata.applicantName || "A candidate";
+      const jobTitle = metadata.jobTitle || "a job position";
+      
+      // Create a clean set of additional data
+      const additionalData: Record<string, any> = {};
+      
+      // Only add applicationId if it exists
+      if (metadata.applicationId) {
+        additionalData.applicationId = metadata.applicationId;
+      }
+      
+      // Only add relatedJob if jobId exists
+      if (jobId) {
+        additionalData.relatedJob = {
+          id: jobId,
+          title: jobTitle
+        };
+      }
+      
+      // Create notification in employernotifications collection with proper link handling
+      await addEmployerNotification(
+        employerId,
+        "New Application Received",
+        `${applicantName} has applied for the position: ${jobTitle}`,
+        "application",
+        jobId ? `/employer/applications/${jobId}` : null,  // Use null instead of undefined
+        additionalData
+      );
+    }
+
     return true
   } catch (error) {
     console.error("Error adding employer activity:", error)
     return false
+  }
+}
+
+/**
+ * Notify a jobseeker that their application has been accepted/shortlisted
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ */
+export const notifyJobseekerApplicationAccepted = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string
+) => {
+  console.log(`Creating acceptance notification for jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for acceptance notification");
+    return false;
+  }
+  
+  try {
+    const result = await addJobseekerNotification(
+      jobseekerId,
+      "Application Shortlisted",
+      `${companyName} has shortlisted your application for the ${jobTitle} position.`,
+      "application",
+      `/jobseeker/applications`,
+      {
+        applicationId,
+        applicationStatus: "Shortlisted",
+        relatedJob: {
+          id: jobId,
+          title: jobTitle
+        }
+      }
+    );
+    console.log("Acceptance notification created successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to create acceptance notification:", error);
+    return false;
+  }
+}
+
+/**
+ * Notify a jobseeker that their application has been rejected
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ * @param reason Optional reason for rejection
+ */
+export const notifyJobseekerApplicationRejected = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string,
+  reason?: string
+) => {
+  console.log(`Creating rejection notification for jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for rejection notification");
+    return false;
+  }
+  
+  const message = reason 
+    ? `${companyName} has declined your application for the ${jobTitle} position. Reason: ${reason}`
+    : `${companyName} has declined your application for the ${jobTitle} position.`;
+  
+  try {
+    const result = await addJobseekerNotification(
+      jobseekerId,
+      "Application Not Selected",
+      message,
+      "application",
+      `/jobseeker/applications`,
+      {
+        applicationId,
+        applicationStatus: "Rejected",
+        relatedJob: {
+          id: jobId,
+          title: jobTitle
+        }
+      }
+    );
+    console.log("Rejection notification created successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to create rejection notification:", error);
+    return false;
+  }
+}
+
+/**
+ * Notify a jobseeker that they have been scheduled for an interview
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ * @param interviewDate The scheduled interview date
+ */
+export const notifyJobseekerInterviewScheduled = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string,
+  interviewDate: string
+) => {
+  console.log(`Creating interview notification for jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for interview notification");
+    return false;
+  }
+  
+  try {
+    const result = await addJobseekerNotification(
+      jobseekerId,
+      "Interview Scheduled",
+      `${companyName} has scheduled an interview with you for the ${jobTitle} position on ${interviewDate}.`,
+      "alert",
+      `/jobseeker/applications`,
+      {
+        applicationId,
+        applicationStatus: "To be Interviewed",
+        relatedJob: {
+          id: jobId,
+          title: jobTitle
+        }
+      }
+    );
+    console.log("Interview notification created successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to create interview notification:", error);
+    return false;
+  }
+}
+
+/**
+ * Notify a jobseeker that they have been hired
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ */
+export const notifyJobseekerHired = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string
+) => {
+  console.log(`Creating hired notification for jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for hired notification");
+    return false;
+  }
+  
+  try {
+    const result = await addJobseekerNotification(
+      jobseekerId,
+      "Congratulations! You've been hired",
+      `${companyName} has decided to hire you for the ${jobTitle} position.`,
+      "success",
+      `/jobseeker/applications`,
+      {
+        applicationId,
+        applicationStatus: "Hired",
+        relatedJob: {
+          id: jobId,
+          title: jobTitle
+        }
+      }
+    );
+    console.log("Hired notification created successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to create hired notification:", error);
+    return false;
+  }
+}
+
+/**
+ * Notify a jobseeker that they have received an email from an employer
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ * @param emailSubject The subject of the email
+ */
+export const notifyJobseekerEmailSent = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string,
+  emailSubject: string
+) => {
+  console.log(`Creating email notification for jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for email notification");
+    return false;
+  }
+  
+  try {
+    const result = await addJobseekerNotification(
+      jobseekerId,
+      "New Message from Employer",
+      `${companyName} has sent you an email regarding your application for the ${jobTitle} position: "${emailSubject}"`,
+      "alert",
+      null,
+      {
+        applicationId,
+        relatedJob: {
+          id: jobId,
+          title: jobTitle
+        }
+      }
+    );
+    console.log("Email notification created successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Failed to create email notification:", error);
+    return false;
   }
 }
 
@@ -315,4 +730,573 @@ export const getEmployerNotifications = async (employerId: string): Promise<Empl
     console.error("Error fetching employer notifications:", error);
     throw error;
   }
+}
+
+/**
+ * Direct function to create a notification in Firestore
+ */
+export const createDirectNotification = async (
+  jobseekerId: string,
+  status: string,
+  jobTitle: string = "Job Position",
+  companyName: string = "Company"
+) => {
+  console.log(`Creating direct ${status} notification for jobseeker ${jobseekerId}`);
+  
+  if (!jobseekerId) {
+    console.error("Error: jobseekerId is required for direct notification");
+    return false;
+  }
+  
+  let title = "";
+  let message = "";
+  let type = "application";
+  
+  switch (status) {
+    case "To be Interviewed":
+      title = "Interview Scheduled";
+      message = `${companyName} has scheduled an interview with you for the ${jobTitle} position.`;
+      type = "alert";
+      break;
+    case "Hired":
+      title = "Congratulations! You've been hired";
+      message = `${companyName} has decided to hire you for the ${jobTitle} position.`;
+      type = "success";
+      break;
+    case "Rejected":
+      title = "Application Not Selected";
+      message = `${companyName} has declined your application for the ${jobTitle} position.`;
+      type = "application";
+      break;
+    default:
+      title = status;
+      message = `Status update: ${status}`;
+  }
+  
+  try {
+    // Create the notification document directly in Firestore
+    const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+    const docRef = await addDoc(jobseekerNotificationsRef, {
+      jobseekerId,
+      title,
+      message,
+      type,
+      isRead: false,
+      createdAt: serverTimestamp(),
+      applicationStatus: status,
+      link: "/jobseeker/applications"
+    });
+    
+    console.log(`Successfully created direct ${status} notification with ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error(`Error creating direct ${status} notification:`, error);
+    return false;
+  }
+}
+
+/**
+ * Test function to check if notifications are working properly
+ * @param jobseekerId The ID of the jobseeker to send the test notification to
+ */
+export const testNotificationSystem = async (jobseekerId: string) => {
+  console.log("Testing notification system...");
+  
+  try {
+    // Test direct notification creation
+    const directResult = await createDirectNotification(
+      jobseekerId,
+      "Test",
+      "Test Job Position",
+      "Test Company"
+    );
+    
+    console.log("Direct notification test result:", directResult);
+    
+    // Test addJobseekerNotification
+    const notificationResult = await addJobseekerNotification(
+      jobseekerId,
+      "Test Notification",
+      "This is a test notification to verify the system is working.",
+      "system",
+      null,
+      {
+        testField: "test value"
+      }
+    );
+    
+    console.log("Regular notification test result:", notificationResult);
+    
+    return {
+      success: Boolean(directResult && notificationResult),
+      directResult,
+      notificationResult
+    };
+  } catch (error) {
+    console.error("Test notification failed:", error);
+    return {
+      success: false,
+      error: String(error)
+    };
+  }
+}
+
+/**
+ * Debug function to verify Firestore connectivity and permissions
+ * This function attempts to write a test document to Firestore
+ */
+export const debugFirestoreConnection = async () => {
+  console.log("Testing Firestore connection...");
+  
+  try {
+    // Test if we can write to Firestore
+    const testCollection = collection(db, "debug_test");
+    const testDoc = await addDoc(testCollection, {
+      test: true,
+      message: "Firestore connection test",
+      timestamp: serverTimestamp()
+    });
+    
+    console.log(`Successfully wrote test document with ID: ${testDoc.id}`);
+    
+    return {
+      success: true,
+      docId: testDoc.id
+    };
+  } catch (error) {
+    console.error("Firestore connection test failed:", error);
+    return {
+      success: false,
+      error: String(error)
+    };
+  }
+}
+
+/**
+ * Direct function to store interview scheduling notification in Firestore
+ * This bypasses the regular notification system for debugging
+ */
+export const directStoreInterviewNotification = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  interviewDate: string
+) => {
+  console.log(`[DIRECT] Creating interview notification for jobseeker ${jobseekerId}`);
+  
+  if (!jobseekerId) {
+    console.error("[DIRECT] Error: jobseekerId is required");
+    return false;
+  }
+  
+  try {
+    // Create the notification document directly in Firestore
+    const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+    
+    // Log the collection reference to ensure it's valid
+    console.log("[DIRECT] Collection reference:", jobseekerNotificationsRef);
+    
+    const notificationData = {
+      jobseekerId,
+      title: "Interview Scheduled",
+      message: `${companyName} has scheduled an interview with you for the ${jobTitle} position on ${interviewDate}.`,
+      type: "alert",
+      isRead: false,
+      createdAt: serverTimestamp(),
+      applicationStatus: "To be Interviewed",
+      link: "/jobseeker/applications",
+      applicationId,
+      relatedJob: {
+        title: jobTitle
+      }
+    };
+    
+    // Log the data being written
+    console.log("[DIRECT] Writing notification data:", notificationData);
+    
+    // Try to add the document
+    const docRef = await addDoc(jobseekerNotificationsRef, notificationData);
+    
+    console.log(`[DIRECT] Successfully created notification with ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error(`[DIRECT] Error creating notification:`, error);
+    return false;
+  }
+}
+
+/**
+ * Direct function to store hire notification in Firestore
+ * This bypasses the regular notification system for debugging
+ */
+export const directStoreHireNotification = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string
+) => {
+  console.log(`[DIRECT] Creating hire notification for jobseeker ${jobseekerId}`);
+  
+  if (!jobseekerId) {
+    console.error("[DIRECT] Error: jobseekerId is required");
+    return false;
+  }
+  
+  if (!applicationId) {
+    console.error("[DIRECT] Warning: applicationId is missing");
+    // Continue anyway since jobseekerId is the critical part
+  }
+
+  try {
+    // Create the notification document directly in Firestore
+    const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+    
+    // Log the collection reference to ensure it's valid
+    console.log("[DIRECT] Collection reference:", jobseekerNotificationsRef);
+    
+    const notificationData = {
+      jobseekerId,
+      title: "Congratulations! You've been hired",
+      message: `${companyName} has decided to hire you for the ${jobTitle} position.`,
+      type: "success",
+      isRead: false,
+      createdAt: serverTimestamp(),
+      applicationStatus: "Hired",
+      link: "/jobseeker/applications",
+      applicationId,
+      relatedJob: {
+        title: jobTitle
+      }
+    };
+    
+    // Log the data being written
+    console.log("[DIRECT] Writing notification data:", notificationData);
+    
+    // Try to add the document
+    const docRef = await addDoc(jobseekerNotificationsRef, notificationData);
+    
+    console.log(`[DIRECT] Successfully created hire notification with ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error(`[DIRECT] Error creating hire notification:`, error);
+    // Additional debugging
+    if (error instanceof Error) {
+      console.error(`[DIRECT] Error message: ${error.message}`);
+      console.error(`[DIRECT] Error stack: ${error.stack}`);
+    }
+    return false;
+  }
+}
+
+/**
+ * Direct function to store rejection notification in Firestore
+ * This bypasses the regular notification system for debugging
+ */
+export const directStoreRejectionNotification = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  reason?: string
+) => {
+  console.log(`[DIRECT] Creating rejection notification for jobseeker ${jobseekerId}`);
+  
+  if (!jobseekerId) {
+    console.error("[DIRECT] Error: jobseekerId is required");
+    return false;
+  }
+  
+  if (!applicationId) {
+    console.error("[DIRECT] Warning: applicationId is missing");
+    // Continue anyway since jobseekerId is the critical part
+  }
+  
+  try {
+    // Create the notification document directly in Firestore
+    const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+    
+    // Log the collection reference to ensure it's valid
+    console.log("[DIRECT] Collection reference:", jobseekerNotificationsRef);
+    
+    const message = reason 
+      ? `${companyName} has declined your application for the ${jobTitle} position. Reason: ${reason}`
+      : `${companyName} has declined your application for the ${jobTitle} position.`;
+    
+    const notificationData = {
+      jobseekerId,
+      title: "Application Not Selected",
+      message,
+      type: "application",
+      isRead: false,
+      createdAt: serverTimestamp(),
+      applicationStatus: "Rejected",
+      link: "/jobseeker/applications",
+      applicationId,
+      relatedJob: {
+        title: jobTitle
+      }
+    };
+    
+    // Log the data being written
+    console.log("[DIRECT] Writing notification data:", notificationData);
+    
+    // Try to add the document
+    const docRef = await addDoc(jobseekerNotificationsRef, notificationData);
+    
+    console.log(`[DIRECT] Successfully created rejection notification with ID: ${docRef.id}`);
+    return docRef.id;
+  } catch (error) {
+    console.error(`[DIRECT] Error creating rejection notification:`, error);
+    // Additional debugging
+    if (error instanceof Error) {
+      console.error(`[DIRECT] Error message: ${error.message}`);
+      console.error(`[DIRECT] Error stack: ${error.stack}`);
+    }
+    return false;
+  }
+}
+
+/**
+ * Combined function to send interview notifications using all available methods
+ * This function tries multiple methods to ensure the notification is sent
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ * @param interviewDate The scheduled interview date
+ * @returns Promise<boolean> indicating if any notification method succeeded
+ */
+export const sendJobseekerInterviewNotification = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string,
+  interviewDate: string
+): Promise<boolean> => {
+  console.log(`[COMBINED] Sending interview notification to jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("[COMBINED] Error: jobseekerId is required for interview notification");
+    return false;
+  }
+  
+  let success = false;
+  
+  // Method 1: Try direct store method first (most reliable)
+  try {
+    console.log("[COMBINED] Trying directStoreInterviewNotification method");
+    const directResult = await directStoreInterviewNotification(
+      jobseekerId,
+      applicationId,
+      jobTitle,
+      companyName,
+      interviewDate
+    );
+    
+    if (directResult) {
+      console.log("[COMBINED] Successfully created notification using directStoreInterviewNotification");
+      success = true;
+    }
+  } catch (error) {
+    console.error("[COMBINED] Error using directStoreInterviewNotification:", error);
+  }
+  
+  // If direct store failed, try the standard notification method
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying notifyJobseekerInterviewScheduled method");
+      const result = await notifyJobseekerInterviewScheduled(
+        jobseekerId,
+        applicationId,
+        jobTitle,
+        companyName,
+        jobId,
+        interviewDate
+      );
+      
+      if (result) {
+        console.log("[COMBINED] Successfully created notification using notifyJobseekerInterviewScheduled");
+        success = true;
+      }
+    } catch (error) {
+      console.error("[COMBINED] Error using notifyJobseekerInterviewScheduled:", error);
+    }
+  }
+  
+  // If both methods failed, try the simple direct notification method
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying createDirectNotification method");
+      const result = await createDirectNotification(
+        jobseekerId,
+        "To be Interviewed",
+        jobTitle,
+        companyName
+      );
+      
+      if (result) {
+        console.log("[COMBINED] Successfully created notification using createDirectNotification");
+        success = true;
+      }
+    } catch (error) {
+      console.error("[COMBINED] Error using createDirectNotification:", error);
+    }
+  }
+  
+  // Last resort: Try to directly add a document to the collection
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying direct Firestore document creation");
+      const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+      
+      const notificationData = {
+        jobseekerId,
+        title: "Interview Scheduled",
+        message: `${companyName} has scheduled an interview with you for the ${jobTitle} position on ${interviewDate}.`,
+        type: "alert",
+        isRead: false,
+        createdAt: serverTimestamp(),
+        applicationStatus: "To be Interviewed",
+        link: "/jobseeker/applications",
+        applicationId
+      };
+      
+      const docRef = await addDoc(jobseekerNotificationsRef, notificationData);
+      console.log(`[COMBINED] Successfully created notification with ID: ${docRef.id}`);
+      success = true;
+    } catch (error) {
+      console.error("[COMBINED] Error with direct Firestore document creation:", error);
+    }
+  }
+  
+  if (success) {
+    console.log(`[COMBINED] Successfully sent interview notification to jobseeker ${jobseekerId}`);
+  } else {
+    console.error(`[COMBINED] All notification methods failed for jobseeker ${jobseekerId}`);
+  }
+  
+  return success;
+}
+
+/**
+ * Combined function to send hire notifications using all available methods
+ * This function tries multiple methods to ensure the notification is sent
+ * @param jobseekerId The ID of the jobseeker
+ * @param applicationId The ID of the application
+ * @param jobTitle The title of the job
+ * @param companyName The name of the company
+ * @param jobId The ID of the job
+ * @returns Promise<boolean> indicating if any notification method succeeded
+ */
+export const sendJobseekerHireNotification = async (
+  jobseekerId: string,
+  applicationId: string,
+  jobTitle: string,
+  companyName: string,
+  jobId: string
+): Promise<boolean> => {
+  console.log(`[COMBINED] Sending hire notification to jobseeker ${jobseekerId} for job ${jobTitle}`);
+  
+  if (!jobseekerId) {
+    console.error("[COMBINED] Error: jobseekerId is required for hire notification");
+    return false;
+  }
+  
+  let success = false;
+  
+  // Method 1: Try direct store method first (most reliable)
+  try {
+    console.log("[COMBINED] Trying directStoreHireNotification method");
+    const directResult = await directStoreHireNotification(
+      jobseekerId,
+      applicationId,
+      jobTitle,
+      companyName
+    );
+    
+    if (directResult) {
+      console.log("[COMBINED] Successfully created notification using directStoreHireNotification");
+      success = true;
+    }
+  } catch (error) {
+    console.error("[COMBINED] Error using directStoreHireNotification:", error);
+  }
+  
+  // If direct store failed, try the standard notification method
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying notifyJobseekerHired method");
+      const result = await notifyJobseekerHired(
+        jobseekerId,
+        applicationId,
+        jobTitle,
+        companyName,
+        jobId
+      );
+      
+      if (result) {
+        console.log("[COMBINED] Successfully created notification using notifyJobseekerHired");
+        success = true;
+      }
+    } catch (error) {
+      console.error("[COMBINED] Error using notifyJobseekerHired:", error);
+    }
+  }
+  
+  // If both methods failed, try the simple direct notification method
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying createDirectNotification method");
+      const result = await createDirectNotification(
+        jobseekerId,
+        "Hired",
+        jobTitle,
+        companyName
+      );
+      
+      if (result) {
+        console.log("[COMBINED] Successfully created notification using createDirectNotification");
+        success = true;
+      }
+    } catch (error) {
+      console.error("[COMBINED] Error using createDirectNotification:", error);
+    }
+  }
+  
+  // Last resort: Try to directly add a document to the collection
+  if (!success) {
+    try {
+      console.log("[COMBINED] Trying direct Firestore document creation");
+      const jobseekerNotificationsRef = collection(db, "jobseekernotifications");
+      
+      const notificationData = {
+        jobseekerId,
+        title: "Congratulations! You've been hired",
+        message: `${companyName} has decided to hire you for the ${jobTitle} position.`,
+        type: "success",
+        isRead: false,
+        createdAt: serverTimestamp(),
+        applicationStatus: "Hired",
+        link: "/jobseeker/applications",
+        applicationId
+      };
+      
+      const docRef = await addDoc(jobseekerNotificationsRef, notificationData);
+      console.log(`[COMBINED] Successfully created notification with ID: ${docRef.id}`);
+      success = true;
+    } catch (error) {
+      console.error("[COMBINED] Error with direct Firestore document creation:", error);
+    }
+  }
+  
+  if (success) {
+    console.log(`[COMBINED] Successfully sent hire notification to jobseeker ${jobseekerId}`);
+  } else {
+    console.error(`[COMBINED] All notification methods failed for jobseeker ${jobseekerId}`);
+  }
+  
+  return success;
 } 

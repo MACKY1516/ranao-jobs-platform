@@ -3,7 +3,7 @@
 import React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { getJobPosting, JobPosting } from "@/lib/jobs"
+import { getJobPosting, JobPosting, toggleJobStatus } from "@/lib/jobs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,13 +21,17 @@ import {
   Users,
 } from "lucide-react"
 import { format } from "date-fns"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function JobDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = React.use(params)
   const jobId = unwrappedParams.id
   const router = useRouter()
+  const { toast } = useToast()
   const [job, setJob] = useState<JobPosting | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isToggling, setIsToggling] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [userData, setUserData] = useState<any>(null)
 
@@ -77,6 +81,34 @@ export default function JobDetailsPage({ params }: { params: Promise<{ id: strin
     }
     
     return "Not specified"
+  }
+
+  const handleStatusToggle = async (checked: boolean) => {
+    if (!job || isToggling) return
+    
+    setIsToggling(true)
+    try {
+      await toggleJobStatus(jobId, checked)
+      setJob({
+        ...job,
+        isActive: checked
+      })
+      
+      toast({
+        title: "Success",
+        description: `Job listing ${checked ? 'set to Hiring' : 'set to Closed'} successfully`,
+        variant: "default",
+      })
+    } catch (error) {
+      console.error("Error toggling job status:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update job status",
+        variant: "destructive",
+      })
+    } finally {
+      setIsToggling(false)
+    }
   }
 
   if (isLoading) {
@@ -138,9 +170,20 @@ export default function JobDetailsPage({ params }: { params: Promise<{ id: strin
                   <span className="text-sm">{job.type}</span>
                 </div>
               </div>
-              <Badge className={job.isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                {job.isActive ? "Active" : "Inactive"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge className={job.isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
+                  {job.isActive ? "Hiring" : "Closed"}
+                </Badge>
+                <div className="flex items-center ml-4">
+                  <Switch 
+                    checked={job.isActive || false} 
+                    onCheckedChange={handleStatusToggle}
+                    disabled={isToggling}
+                    className="mr-2"
+                  />
+                  <span className="text-sm font-medium">{isToggling ? 'Updating...' : (job.isActive ? 'Hiring' : 'Closed')}</span>
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="pt-0 space-y-6">

@@ -80,10 +80,11 @@ export default function ReportsPage() {
     jobCategoriesChartData: ChartDataPoint[];
     jobTypesData: ChartDataPoint[];
     salaryRangesData: any[];
-    applicationTrendData: { name: string; users: number }[];
+    applicationTrendData: { name: string; applications: number }[];
     applicationStatusData: ChartDataPoint[];
     popularJobCategoriesData: ChartDataPoint[];
     responseTimeData: any[];
+    verificationStatusData: ChartDataPoint[];
   }>({
     userGrowthData: [],
     jobCategoriesData: [],
@@ -97,7 +98,8 @@ export default function ReportsPage() {
     applicationTrendData: [],
     applicationStatusData: [],
     popularJobCategoriesData: [],
-    responseTimeData: []
+    responseTimeData: [],
+    verificationStatusData: []
   })
   
   // Helper function to format Firestore timestamps
@@ -173,6 +175,7 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+            id: doc.id,
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)
           }
@@ -183,6 +186,7 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+            id: doc.id,
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)
           }
@@ -193,6 +197,7 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+            id: doc.id,
             appliedAt: formatTimestamp(data.appliedAt),
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)
@@ -230,6 +235,10 @@ export default function ReportsPage() {
         const jobGrowth = previousNewJobs > 0
           ? Math.round(((newJobs - previousNewJobs) / previousNewJobs) * 100)
           : newJobs > 0 ? 100 : 0
+        
+        // Get all jobs for additional analysis (including inactive)
+        const allJobsQuery = query(collection(db, "jobs"))
+        const allJobsSnapshot = await getDocs(allJobsQuery)
         
         // Get applications and calculate growth
         const applicationsQuery = query(collection(db, "applications"))
@@ -405,21 +414,209 @@ export default function ReportsPage() {
           .map(([status, count]) => ({ name: status, value: Number(count) }))
           .filter(item => item.value > 0)
 
+        // Application trend - last 6 months
+        let applicationTrendData = []
+        for (let i = 5; i >= 0; i--) {
+          const monthStart = startOfDay(subMonths(now, i))
+          const monthEnd = i > 0 ? startOfDay(subMonths(now, i-1)) : now
+          
+          const monthApplicationsQuery = query(
+            collection(db, "applications"),
+            where("appliedAt", ">=", Timestamp.fromDate(monthStart)),
+            where("appliedAt", "<=", Timestamp.fromDate(monthEnd))
+          )
+          const monthApplicationsSnapshot = await getDocs(monthApplicationsQuery)
+          
+          applicationTrendData.push({
+            name: format(monthStart, 'MMM'),
+            applications: monthApplicationsSnapshot.size
+          })
+        }
+        
+        // Salary ranges data
+        const salaryRanges = {
+          '< ₱15,000': 0,
+          '₱15,000 - ₱30,000': 0,
+          '₱30,000 - ₱50,000': 0,
+          '₱50,000 - ₱80,000': 0,
+          '₱80,000+': 0,
+          'Not specified': 0
+        }
+        
+        allJobsSnapshot.docs.forEach(doc => {
+          const job = formatJobData(doc)
+          // Extract salary and convert to number for comparison
+          let salaryValue = job.salary
+          
+          if (!salaryValue) {
+            salaryRanges['Not specified']++
+            return
+          }
+          
+          // Extract numeric values from salary string
+          const salaryText = String(salaryValue)
+          const numericValues = salaryText.match(/\d+,\d+|\d+/g)
+          
+          if (!numericValues || numericValues.length === 0) {
+            salaryRanges['Not specified']++
+            return
+          }
+          
+          // Convert to numbers
+          const salaryNumbers = numericValues.map(val => Number(val.replace(',', '')))
+          
+          // Use the maximum value if range is provided
+          const maxSalary = Math.max(...salaryNumbers)
+          
+          // Categorize
+          if (maxSalary < 15000) {
+            salaryRanges['< ₱15,000']++
+          } else if (maxSalary < 30000) {
+            salaryRanges['₱15,000 - ₱30,000']++
+          } else if (maxSalary < 50000) {
+            salaryRanges['₱30,000 - ₱50,000']++
+          } else if (maxSalary < 80000) {
+            salaryRanges['₱50,000 - ₱80,000']++
+          } else {
+            salaryRanges['₱80,000+']++
+          }
+        })
+        
+        const salaryRangesData = Object.entries(salaryRanges)
+          .map(([range, count]) => ({ name: range, value: count }))
+          .filter(item => item.value > 0)
+        
+        // User activity data - login frequency
+        const userActivityLabels = ['Last 24 hours', 'Last week', 'Last month', 'Inactive']
+        const userActivityCounts = [0, 0, 0, 0]
+        
+        const oneDayAgo = subDays(now, 1)
+        const oneWeekAgo = subDays(now, 7)
+        const oneMonthAgo = subDays(now, 30)
+        
+        usersSnapshot.docs.forEach(doc => {
+          const user = formatUserData(doc)
+          const lastLogin = user.lastLogin ? new Date(user.lastLogin) : null
+          
+          if (!lastLogin) {
+            userActivityCounts[3]++ // Inactive
+          } else if (lastLogin >= oneDayAgo) {
+            userActivityCounts[0]++ // Last 24 hours
+          } else if (lastLogin >= oneWeekAgo) {
+            userActivityCounts[1]++ // Last week
+          } else if (lastLogin >= oneMonthAgo) {
+            userActivityCounts[2]++ // Last month
+          } else {
+            userActivityCounts[3]++ // Inactive
+          }
+        })
+        
+        const userActivityData = userActivityLabels.map((label, index) => ({
+          name: label,
+          value: userActivityCounts[index]
+        }))
+        
+        // Average response time data
+        // Get all employers
+        const employerDocs = employersSnapshot.docs.map(formatUserData)
+        
+        // For each employer, calculate their average response time
+        const responseTimeData = []
+        const employerResponseTimes: Record<string, number> = {}
+        
+        // Get application responses
+        const applicationResponsesQuery = query(collection(db, "applicationresponses"))
+        const applicationResponsesSnapshot = await getDocs(applicationResponsesQuery)
+        const applicationResponses = applicationResponsesSnapshot.docs.map(doc => doc.data())
+        
+        // Calculate response times for each employer
+        applicationResponses.forEach(response => {
+          if (response.employerId && response.responseTime) {
+            if (!employerResponseTimes[response.employerId]) {
+              employerResponseTimes[response.employerId] = 0
+            }
+            employerResponseTimes[response.employerId] += response.responseTime
+          }
+        })
+        
+        // Calculate averages and prepare data
+        const responseTimeRanges = {
+          'Same day': 0,
+          '1-2 days': 0,
+          '3-7 days': 0,
+          'Over a week': 0,
+          'No response': 0
+        }
+        
+        Object.values(employerResponseTimes).forEach(totalTime => {
+          const avgResponseHours = totalTime / 24 // Convert to days
+          
+          if (avgResponseHours <= 24) {
+            responseTimeRanges['Same day']++
+          } else if (avgResponseHours <= 48) {
+            responseTimeRanges['1-2 days']++
+          } else if (avgResponseHours <= 168) {
+            responseTimeRanges['3-7 days']++
+          } else {
+            responseTimeRanges['Over a week']++
+          }
+        })
+        
+        // Account for employers with no responses
+        const employersWithResponses = Object.keys(employerResponseTimes).length
+        responseTimeRanges['No response'] = employerDocs.length - employersWithResponses
+        
+        const responseTimesChartData = Object.entries(responseTimeRanges)
+          .map(([range, count]) => ({ name: range, value: count }))
+        
+        // Verification status data
+        const verificationStatusCounts = {
+          Approved: 0,
+          Pending: 0,
+          Rejected: 0
+        }
+
+        allJobsSnapshot.docs.forEach(doc => {
+          const job = formatJobData(doc)
+          if (job.verificationStatus === 'approved') {
+            verificationStatusCounts.Approved++
+          } else if (job.verificationStatus === 'rejected') {
+            verificationStatusCounts.Rejected++
+          } else {
+            verificationStatusCounts.Pending++
+          }
+        })
+
+        const verificationStatusData = Object.entries(verificationStatusCounts)
+          .map(([status, count]) => ({ name: status, value: count }))
+
+        setStats({
+          totalUsers,
+          activeJobListings: activeJobs,
+          jobApplications: totalApplications,
+          employerVerifications: verifications,
+          userGrowth,
+          jobGrowth,
+          applicationGrowth,
+          verificationGrowth
+        })
+
         // Set all chart data
         setChartData({
           userGrowthData,
           jobCategoriesData,
           userTypesData,
           userLocationsData,
-          userActivityData: [], // This would require more complex queries
+          userActivityData,
           jobPostingTrendData,
           jobCategoriesChartData: jobCategoriesData,
           jobTypesData,
-          salaryRangesData: [], // This would require parsing salary ranges
-          applicationTrendData: userGrowthData, // Using the same data for demo
+          salaryRangesData,
+          applicationTrendData,
           applicationStatusData,
           popularJobCategoriesData: jobCategoriesData,
-          responseTimeData: [] // Would require more complex data
+          responseTimeData: responseTimesChartData,
+          verificationStatusData
         })
       } catch (err) {
         console.error("Error fetching report data:", err)
@@ -507,6 +704,7 @@ export default function ReportsPage() {
                   <TabsTrigger value="users">Users</TabsTrigger>
                   <TabsTrigger value="jobs">Jobs</TabsTrigger>
                   <TabsTrigger value="applications">Applications</TabsTrigger>
+                  <TabsTrigger value="advanced">Advanced Analytics</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -765,7 +963,7 @@ export default function ReportsPage() {
                             <YAxis />
                             <Tooltip />
                             <Legend />
-                            <Line type="monotone" dataKey="users" name="Applications" stroke="#ec4899" strokeWidth={2} />
+                            <Line type="monotone" dataKey="applications" name="Applications" stroke="#ec4899" strokeWidth={2} />
                           </LineChart>
                         </ResponsiveContainer>
                       </CardContent>
@@ -828,8 +1026,111 @@ export default function ReportsPage() {
                             <YAxis />
                             <Tooltip />
                             <Legend />
-                            <Bar dataKey="users" name="Applications" fill="#ef4444" />
+                            <Bar dataKey="applications" name="Applications" fill="#ef4444" />
                           </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="advanced">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Salary Ranges</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData.salaryRangesData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip formatter={(value) => [`${value} jobs`]} />
+                            <Legend />
+                            <Bar dataKey="value" name="Jobs" fill="#f59e0b" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>User Activity</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={chartData.userActivityData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {chartData.userActivityData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => [`${value} users`]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Employer Response Time</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={chartData.responseTimeData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {chartData.responseTimeData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => [`${value} employers`]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Job Verification Status</CardTitle>
+                      </CardHeader>
+                      <CardContent className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={chartData.verificationStatusData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {chartData.verificationStatusData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value) => [`${value} jobs`]} />
+                          </PieChart>
                         </ResponsiveContainer>
                       </CardContent>
                     </Card>

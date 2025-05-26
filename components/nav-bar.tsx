@@ -29,10 +29,29 @@ export function NavBar() {
   const [logo, setLogo] = useState<string | null>(null)
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [notificationRefresh, setNotificationRefresh] = useState(0)
 
   // Fix hydration mismatch by only rendering after mount
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Listen for notification updates
+  useEffect(() => {
+    const handleUserStateChange = () => {
+      // Trigger a refresh of notifications
+      setNotificationRefresh(prev => prev + 1)
+    }
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener("userStateChange", handleUserStateChange)
+      
+      return () => {
+        window.removeEventListener("userStateChange", handleUserStateChange)
+      }
+    }
+    
+    return undefined
   }, [])
 
   // Check if user is logged in
@@ -209,7 +228,12 @@ export function NavBar() {
                   {isMultiRole && <RoleSwitcher />}
 
                   {/* Notifications - use the right component based on role */}
-                  {isEmployer ? <NotificationDropdown /> : isJobseeker ? <JobseekerNotificationDropdown /> : null}
+                  {isEmployer ? 
+                    <NotificationDropdown key={`emp-${notificationRefresh}`} /> : 
+                    isJobseeker ? 
+                    <JobseekerNotificationDropdown key={`js-${notificationRefresh}`} /> : 
+                    null
+                  }
 
                   {/* Theme Toggle */}
                   <ModeToggle />
@@ -316,7 +340,13 @@ export function NavBar() {
               {isLoggedIn && isMultiRole && <RoleSwitcher />}
 
               {/* Notifications for mobile */}
-              {isLoggedIn && (isEmployer ? <NotificationDropdown /> : isJobseeker ? <JobseekerNotificationDropdown /> : null)}
+              {isLoggedIn && (
+                isEmployer ? 
+                <NotificationDropdown key={`emp-mobile-${notificationRefresh}`} /> : 
+                isJobseeker ? 
+                <JobseekerNotificationDropdown key={`js-mobile-${notificationRefresh}`} /> : 
+                null
+              )}
               
               <ModeToggle />
               <button className="text-white" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">

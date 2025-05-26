@@ -268,6 +268,37 @@ export async function incrementJobApplicationsCount(jobId: string): Promise<void
 }
 
 /**
+ * Decrement the applications count for a job posting
+ * @param jobId The ID of the job posting
+ */
+export async function decrementJobApplicationsCount(jobId: string): Promise<void> {
+  try {
+    const jobRef = doc(db, "jobs", jobId)
+    
+    // Get the current job data
+    const jobDoc = await getDoc(jobRef)
+    if (!jobDoc.exists()) {
+      throw new Error("Job posting not found")
+    }
+    
+    const jobData = jobDoc.data()
+    const currentCount = jobData.applicationsCount || 0
+    
+    // Ensure count doesn't go below zero
+    const newCount = Math.max(0, currentCount - 1)
+    
+    // Decrement the count
+    await updateDoc(jobRef, {
+      applicationsCount: newCount,
+      updatedAt: serverTimestamp()
+    })
+  } catch (error) {
+    console.error("Error decrementing applications count:", error)
+    throw new Error("Failed to decrement applications count")
+  }
+}
+
+/**
  * Create a new job posting
  * @param jobData The job posting data
  * @param employerId The ID of the employer creating the job

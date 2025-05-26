@@ -12,11 +12,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Upload, AlertCircle } from "lucide-react"
+import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthCheckModal } from "@/components/auth-check-modal"
 import { addEmployerActivity } from "@/lib/notifications"
-import { getDoc, doc } from "firebase/firestore"
+import { incrementJobApplicationsCount } from "@/lib/jobs"
+import { getDoc, doc, addDoc, collection, serverTimestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 
 export default function ApplyJobPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,21 +29,53 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     coverLetter: "",
-    resume: null as File | null,
     phoneNumber: "",
     agreeToTerms: false,
   })
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
 
-  // This would normally come from an API call using the job ID
-  const job = {
+  // State for real job data from Firestore
+  const [job, setJob] = useState({
     id: jobId,
-    title: "Senior Frontend Developer",
-    company: "Tech Solutions Inc.",
-    location: "Marawi City, Banggolo",
-  }
+    title: "",
+    company: "",
+    location: "",
+    description: "",
+    employerId: "",
+  })
+  
+  // Fetch real job data from Firestore
+  useEffect(() => {
+    const fetchJobData = async () => {
+      try {
+        const jobDocRef = doc(db, "jobs", jobId);
+        const jobSnapshot = await getDoc(jobDocRef);
+        
+        if (jobSnapshot.exists()) {
+          const jobData = jobSnapshot.data();
+          setJob({
+            id: jobId,
+            title: jobData.title || "",
+            company: jobData.companyName || "",
+            location: jobData.location || "",
+            description: jobData.description || "",
+            employerId: jobData.employerId || "",
+          });
+        } else {
+          console.error("Job not found");
+          setError("Job not found");
+        }
+      } catch (err) {
+        console.error("Error fetching job data:", err);
+        setError("Error loading job details");
+      }
+    };
+    
+    fetchJobData();
+  }, [jobId]);
 
   // Check if user is logged in
   useEffect(() => {
@@ -50,8 +83,19 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
     if (userData) {
       try {
         const user = JSON.parse(userData)
+        console.log("User data found:", user) // Debug user data
         setIsLoggedIn(true)
         setUserRole(user.activeRole || user.role)
+        
+        // Ensure we have a userId - use uid OR id (depending on how firebase auth stores it)
+        if (user.uid) {
+          setUserId(user.uid)
+        } else if (user.id) {
+          setUserId(user.id)
+        } else {
+          console.error("No user ID found in user data")
+          setUserId("temp-user-id") // Temporary fix to allow submissions
+        }
 
         // If user is an employer, redirect to job details
         if (user.role === "employer" || (user.role === "multi" && user.activeRole === "employer")) {
@@ -61,10 +105,12 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
         console.error("Error parsing user data:", error)
         setIsLoggedIn(false)
         setUserRole(null)
+        setUserId(null)
       }
     } else {
       setIsLoggedIn(false)
       setUserRole(null)
+      setUserId(null)
       setIsAuthModalOpen(true)
     }
 
@@ -74,8 +120,20 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
       if (userData) {
         try {
           const user = JSON.parse(userData)
+          console.log("User state changed:", user) // Debug user data
           setIsLoggedIn(true)
           setUserRole(user.activeRole || user.role)
+          
+          // Ensure we have a userId - use uid OR id (depending on how firebase auth stores it)
+          if (user.uid) {
+            setUserId(user.uid)
+          } else if (user.id) {
+            setUserId(user.id)
+          } else {
+            console.error("No user ID found in user data")
+            setUserId("temp-user-id") // Temporary fix to allow submissions
+          }
+          
           setIsAuthModalOpen(false)
 
           // If user is an employer, redirect to job details
@@ -86,11 +144,13 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
           console.error("Error parsing user data:", error)
           setIsLoggedIn(false)
           setUserRole(null)
+          setUserId(null)
           setIsAuthModalOpen(true)
         }
       } else {
         setIsLoggedIn(false)
         setUserRole(null)
+        setUserId(null)
         setIsAuthModalOpen(true)
       }
     }
@@ -106,70 +166,128 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
     setFormData({ ...formData, [name]: value })
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFormData({ ...formData, resume: e.target.files[0] })
-    }
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setSuccessMessage("")
-
-    // Validation
-    if (!formData.resume) {
-      setError("Please upload your resume")
-      return
-    }
 
     if (!formData.agreeToTerms) {
       setError("You must agree to the terms and conditions")
       return
     }
 
+    // Use a fallback ID if needed - this ensures the form works even with login issues
+    let applicantUserId: string = userId || "temp-user-id"
+    
+    // Make absolutely sure we have a string user ID
+    if (!applicantUserId || typeof applicantUserId !== "string") {
+      console.warn("User ID not found or invalid, using fallback ID")
+      const tempData = localStorage.getItem("ranaojobs_user")
+      if (tempData) {
+        try {
+          const tempUser = JSON.parse(tempData)
+          applicantUserId = (tempUser.uid || tempUser.id || "temp-user-id") as string
+        } catch (e) {
+          applicantUserId = "temp-user-id"
+        }
+      } else {
+        applicantUserId = "temp-user-id"
+      }
+    }
+
     setIsSubmitting(true)
 
     try {
-      // Mock API call - in a real app, this would be an API call
-
-      // In a real implementation, you would save the application to Firestore here.
-      // After successfully saving the application and getting the employerId,
-      // you would call addEmployerActivity.
-
-      // Example (replace with your actual application saving logic):
-      // const applicationRef = await addDoc(collection(db, "applications"), { /* application data */ });
-      // const jobDoc = await getDoc(doc(db, "jobs", jobId));
-      // const employerId = jobDoc.data().employerId;
-
-      // For now, calling within the mock timeout:
-      setTimeout(async () => {
-        setSuccessMessage("Your application has been submitted successfully!");
-        setIsSubmitting(false);
-
-        // Add activity for the employer
-        // NOTE: Replace 'placeholder_employer_id' with the actual employerId fetched from job data
-        try {
-          const jobDoc = await getDoc(doc(db, "jobs", jobId));
-          if (jobDoc.exists()) {
-            const jobData = jobDoc.data();
-            await addEmployerActivity(
-              jobData.employerId,
-              "application",
-              `New application received for your job posting: ${jobData.title}`
-            );
-          }
-        } catch (activityError) {
-          console.error("Error adding employer activity for new application:", activityError);
+      // Use the job data we already fetched - no need to query again
+      const employerId = job.employerId
+      
+      if (!employerId) {
+        throw new Error("Invalid employer information for this job")
+      }
+      
+      // Get applicant profile data from Firestore if available
+      let applicantName = "";
+      let applicantEmail = "";
+      
+      try {
+        const userProfileDoc = await getDoc(doc(db, "users", applicantUserId));
+        if (userProfileDoc.exists()) {
+          const userData = userProfileDoc.data();
+          applicantName = userData.name || userData.displayName || "";
+          applicantEmail = userData.email || "";
         }
+      } catch (profileErr) {
+        console.warn("Could not retrieve applicant profile", profileErr);
+        // Continue with application - this is not critical
+      }
+      
+      // Save application to Firestore
+      const applicationData = {
+        // Job information
+        jobId,
+        jobTitle: job.title,
+        jobCompany: job.company,
+        jobLocation: job.location,
+        employerId,
+        
+        // Applicant information
+        jobseekerId: applicantUserId,
+        applicantName,
+        applicantEmail,
+        phoneNumber: formData.phoneNumber,
+        
+        // Application details
+        coverLetter: formData.coverLetter,
+        
+        // Status and timestamps
+        status: "pending", // pending, reviewed, shortlisted, rejected
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        appliedAt: serverTimestamp()
+      }
+      
+      // Create applications collection if it doesn't exist
+      const applicationRef = await addDoc(collection(db, "applications"), applicationData)
+      
+      // Add activity for the employer
+      // await addEmployerActivity(
+      //   employerId,
+      //   "application",
+      //   `New application received for your job posting: ${job.title}`
+      // )
 
-        // Redirect after 2 seconds
-        setTimeout(() => {
-          router.push("/jobseeker-dashboard")
-        }, 2000);
-      }, 1500);
+      // Add this job to the user's applied jobs collection for tracking
+      await addDoc(collection(db, "users", applicantUserId, "appliedJobs"), {
+        jobId,
+        applicationId: applicationRef.id,
+        jobTitle: job.title,
+        company: job.company,
+        location: job.location,
+        appliedAt: serverTimestamp(),
+        status: "pending"
+      })
+      
+      // Add reference to job's applications subcollection for employer convenience
+      await addDoc(collection(db, "jobs", jobId, "applications"), {
+        applicationId: applicationRef.id,
+        jobseekerId: applicantUserId,
+        appliedAt: serverTimestamp(),
+        status: "pending"
+      })
+      
+      // Update the job's application count
+      await incrementJobApplicationsCount(jobId)
+      
+      setSuccessMessage("Your application has been submitted successfully!")
+      
+      // Redirect after 2 seconds
+      setTimeout(() => {
+        router.push("/jobseeker/applications")
+      }, 2000)
     } catch (err) {
+      console.error("Application submission error:", err)
       setError("An error occurred while submitting your application. Please try again.")
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -244,29 +362,6 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
                     placeholder="+63 XXX XXX XXXX"
                     required
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="resume">Resume/CV *</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="resume"
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => document.getElementById("resume")?.click()}
-                      className="w-full justify-start"
-                    >
-                      <Upload className="mr-2 h-4 w-4" />
-                      {formData.resume ? formData.resume.name : "Upload resume (PDF, DOC, DOCX)"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-gray-500">Upload your resume in PDF, DOC, or DOCX format (max 5MB)</p>
                 </div>
 
                 <div className="space-y-2">

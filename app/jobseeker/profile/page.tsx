@@ -23,6 +23,14 @@ import { getUserProfile, updateUserProfile, requestMultiRoleUpgrade } from "@/li
 import { uploadJobseekerPhoto, uploadJobseekerResume } from "@/lib/fileUpload"
 import { useToast } from "@/components/ui/use-toast"
 import { recordActivity } from "@/lib/activity-logger"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // Define a type for the additional document
 interface AdditionalDocument {
@@ -181,6 +189,40 @@ export default function JobseekerProfilePage() {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const resumeInputRef = useRef<HTMLInputElement>(null)
   const documentInputRef = useRef<HTMLInputElement>(null)
+
+  // States for managing add/edit dialogs
+  const [isAddingExperience, setIsAddingExperience] = useState(false)
+  const [isAddingEducation, setIsAddingEducation] = useState(false)
+  const [isAddingCertification, setIsAddingCertification] = useState(false)
+  
+  // State for new entries
+  const [newExperience, setNewExperience] = useState({
+    id: 0,
+    title: "",
+    company: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    description: ""
+  })
+  
+  const [newEducation, setNewEducation] = useState({
+    id: 0,
+    degree: "",
+    institution: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    description: ""
+  })
+  
+  const [newCertification, setNewCertification] = useState({
+    id: 0,
+    name: "",
+    issuer: "",
+    date: "",
+    description: ""
+  })
 
   useEffect(() => {
     // Check if user is logged in
@@ -619,6 +661,128 @@ export default function JobseekerProfilePage() {
     }
   }
 
+  // Handlers for adding and removing experience, education and certifications
+  const handleAddExperience = () => {
+    // Create a new ID based on timestamp or highest current ID
+    const newId = profileData.experience.length > 0 
+      ? Math.max(...profileData.experience.map(exp => exp.id)) + 1 
+      : 1;
+    
+    const experienceToAdd = {
+      ...newExperience,
+      id: newId
+    };
+    
+    // Add to profile data
+    setProfileData({
+      ...profileData,
+      experience: [...profileData.experience, experienceToAdd]
+    });
+    
+    // Reset form and close dialog
+    setNewExperience({
+      id: 0,
+      title: "",
+      company: "",
+      location: "",
+      startDate: "",
+      endDate: "",
+      description: ""
+    });
+    setIsAddingExperience(false);
+    
+    // Mark that we have unsaved changes
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleAddEducation = () => {
+    // Create a new ID
+    const newId = profileData.education.length > 0 
+      ? Math.max(...profileData.education.map(edu => edu.id)) + 1 
+      : 1;
+    
+    const educationToAdd = {
+      ...newEducation,
+      id: newId
+    };
+    
+    // Add to profile data
+    setProfileData({
+      ...profileData,
+      education: [...profileData.education, educationToAdd]
+    });
+    
+    // Reset form and close dialog
+    setNewEducation({
+      id: 0,
+      degree: "",
+      institution: "",
+      location: "",
+      startDate: "",
+      endDate: "",
+      description: ""
+    });
+    setIsAddingEducation(false);
+    
+    // Mark that we have unsaved changes
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleAddCertification = () => {
+    // Create a new ID
+    const newId = profileData.certifications.length > 0 
+      ? Math.max(...profileData.certifications.map(cert => cert.id)) + 1 
+      : 1;
+    
+    const certificationToAdd = {
+      ...newCertification,
+      id: newId
+    };
+    
+    // Add to profile data
+    setProfileData({
+      ...profileData,
+      certifications: [...profileData.certifications, certificationToAdd]
+    });
+    
+    // Reset form and close dialog
+    setNewCertification({
+      id: 0,
+      name: "",
+      issuer: "",
+      date: "",
+      description: ""
+    });
+    setIsAddingCertification(false);
+    
+    // Mark that we have unsaved changes
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleDeleteExperience = (id: number) => {
+    setProfileData({
+      ...profileData,
+      experience: profileData.experience.filter(exp => exp.id !== id)
+    });
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleDeleteEducation = (id: number) => {
+    setProfileData({
+      ...profileData,
+      education: profileData.education.filter(edu => edu.id !== id)
+    });
+    setHasUnsavedChanges(true);
+  };
+  
+  const handleDeleteCertification = (id: number) => {
+    setProfileData({
+      ...profileData,
+      certifications: profileData.certifications.filter(cert => cert.id !== id)
+    });
+    setHasUnsavedChanges(true);
+  };
+
   // Cleanup function to free resources when component unmounts
   useEffect(() => {
     return () => {
@@ -999,7 +1163,11 @@ export default function JobseekerProfilePage() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <Label>Work Experience</Label>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setIsAddingExperience(true)}
+                      >
                         Add Experience
                       </Button>
                     </div>
@@ -1020,7 +1188,17 @@ export default function JobseekerProfilePage() {
                           </div>
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
+                          <div className="flex justify-between items-start">
                           <p className="text-sm">{exp.description}</p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-red-500 ml-4"
+                              onClick={() => handleDeleteExperience(exp.id)}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -1029,7 +1207,11 @@ export default function JobseekerProfilePage() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <Label>Education</Label>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setIsAddingEducation(true)}
+                      >
                         Add Education
                       </Button>
                     </div>
@@ -1050,7 +1232,17 @@ export default function JobseekerProfilePage() {
                           </div>
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
+                          <div className="flex justify-between items-start">
                           <p className="text-sm">{edu.description}</p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-red-500 ml-4"
+                              onClick={() => handleDeleteEducation(edu.id)}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -1059,7 +1251,11 @@ export default function JobseekerProfilePage() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <Label>Certifications</Label>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setIsAddingCertification(true)}
+                      >
                         Add Certification
                       </Button>
                     </div>
@@ -1076,7 +1272,17 @@ export default function JobseekerProfilePage() {
                           </div>
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
+                          <div className="flex justify-between items-start">
                           <p className="text-sm">{cert.description}</p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-red-500 ml-4"
+                              onClick={() => handleDeleteCertification(cert.id)}
+                            >
+                              Delete
+                            </Button>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -1370,6 +1576,237 @@ export default function JobseekerProfilePage() {
         title="Jobseeker Account Required"
         message="You need to login or register as a jobseeker to access this page."
       />
+      
+      {/* Dialog components for adding items */}
+      
+      {/* Experience Dialog */}
+      <Dialog open={isAddingExperience} onOpenChange={setIsAddingExperience}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Work Experience</DialogTitle>
+            <DialogDescription>
+              Add details about your work experience
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="jobTitle">Job Title</Label>
+              <Input 
+                id="jobTitle" 
+                placeholder="e.g. Frontend Developer"
+                value={newExperience.title}
+                onChange={(e) => setNewExperience({...newExperience, title: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company">Company</Label>
+              <Input 
+                id="company" 
+                placeholder="e.g. Acme Inc."
+                value={newExperience.company}
+                onChange={(e) => setNewExperience({...newExperience, company: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expLocation">Location</Label>
+              <Input 
+                id="expLocation" 
+                placeholder="e.g. Marawi City"
+                value={newExperience.location}
+                onChange={(e) => setNewExperience({...newExperience, location: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input 
+                  id="startDate" 
+                  placeholder="e.g. Jan 2021"
+                  value={newExperience.startDate}
+                  onChange={(e) => setNewExperience({...newExperience, startDate: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endDate">End Date</Label>
+                <Input 
+                  id="endDate" 
+                  placeholder="e.g. Present"
+                  value={newExperience.endDate}
+                  onChange={(e) => setNewExperience({...newExperience, endDate: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expDescription">Description</Label>
+              <Textarea 
+                id="expDescription" 
+                placeholder="Describe your responsibilities and achievements"
+                value={newExperience.description}
+                onChange={(e) => setNewExperience({...newExperience, description: e.target.value})}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingExperience(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={handleAddExperience}
+              disabled={!newExperience.title || !newExperience.company}
+            >
+              Add Experience
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Education Dialog */}
+      <Dialog open={isAddingEducation} onOpenChange={setIsAddingEducation}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Education</DialogTitle>
+            <DialogDescription>
+              Add details about your educational background
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="degree">Degree/Certificate</Label>
+              <Input 
+                id="degree" 
+                placeholder="e.g. Bachelor of Science in Computer Science"
+                value={newEducation.degree}
+                onChange={(e) => setNewEducation({...newEducation, degree: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="institution">Institution</Label>
+              <Input 
+                id="institution" 
+                placeholder="e.g. Mindanao State University"
+                value={newEducation.institution}
+                onChange={(e) => setNewEducation({...newEducation, institution: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="eduLocation">Location</Label>
+              <Input 
+                id="eduLocation" 
+                placeholder="e.g. Marawi City"
+                value={newEducation.location}
+                onChange={(e) => setNewEducation({...newEducation, location: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="eduStartDate">Start Year</Label>
+                <Input 
+                  id="eduStartDate" 
+                  placeholder="e.g. 2016"
+                  value={newEducation.startDate}
+                  onChange={(e) => setNewEducation({...newEducation, startDate: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="eduEndDate">End Year</Label>
+                <Input 
+                  id="eduEndDate" 
+                  placeholder="e.g. 2020"
+                  value={newEducation.endDate}
+                  onChange={(e) => setNewEducation({...newEducation, endDate: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="eduDescription">Description</Label>
+              <Textarea 
+                id="eduDescription" 
+                placeholder="Additional details about your studies, achievements, etc."
+                value={newEducation.description}
+                onChange={(e) => setNewEducation({...newEducation, description: e.target.value})}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingEducation(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={handleAddEducation}
+              disabled={!newEducation.degree || !newEducation.institution}
+            >
+              Add Education
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Certification Dialog */}
+      <Dialog open={isAddingCertification} onOpenChange={setIsAddingCertification}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Certification</DialogTitle>
+            <DialogDescription>
+              Add details about a certification you've earned
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="certName">Certification Name</Label>
+              <Input 
+                id="certName" 
+                placeholder="e.g. AWS Certified Solutions Architect"
+                value={newCertification.name}
+                onChange={(e) => setNewCertification({...newCertification, name: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="issuer">Issuing Organization</Label>
+              <Input 
+                id="issuer" 
+                placeholder="e.g. Amazon Web Services"
+                value={newCertification.issuer}
+                onChange={(e) => setNewCertification({...newCertification, issuer: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="certDate">Date</Label>
+              <Input 
+                id="certDate" 
+                placeholder="e.g. June 2023"
+                value={newCertification.date}
+                onChange={(e) => setNewCertification({...newCertification, date: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="certDescription">Description</Label>
+              <Textarea 
+                id="certDescription" 
+                placeholder="Details about the certification"
+                value={newCertification.description}
+                onChange={(e) => setNewCertification({...newCertification, description: e.target.value})}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingCertification(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={handleAddCertification}
+              disabled={!newCertification.name || !newCertification.issuer}
+            >
+              Add Certification
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

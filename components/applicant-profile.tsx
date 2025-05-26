@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   Briefcase,
-  Calendar,
+  Calendar as CalendarIcon,
   Download,
   FileText,
   GraduationCap,
@@ -26,11 +26,77 @@ import {
   ThumbsDown,
   ThumbsUp,
   User,
+  CheckCircle,
+  XCircle,
+  Eye
 } from "lucide-react"
 import { db } from "@/lib/firebase"
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, Timestamp } from "firebase/firestore"
-import { format, parseISO, formatDistanceToNow, isValid } from "date-fns"
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, Timestamp, addDoc } from "firebase/firestore"
+import { format, parseISO, formatDistanceToNow, isValid, isPast } from "date-fns"
 import { useToast } from "@/components/ui/use-toast"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label"
+import { Calendar } from "@/components/ui/calendar"
+import { addEmployerActivity, notifyJobseekerApplicationAccepted, notifyJobseekerApplicationRejected, notifyJobseekerInterviewScheduled, notifyJobseekerEmailSent, notifyJobseekerHired, createDirectNotification, directStoreInterviewNotification, directStoreHireNotification, directStoreRejectionNotification, sendJobseekerInterviewNotification, sendJobseekerHireNotification } from "@/lib/notifications"
+import { decrementJobApplicationsCount } from "@/lib/jobs"
+
+// Utility function to log application data
+const logApplicationData = (data: any, id: string) => {
+  console.group(`Application Data (ID: ${id})`)
+  console.log('Raw data:', data)
+  console.log('Job ID:', data.jobId)
+  console.log('Job Title:', data.jobTitle)
+  console.log('Applicant ID:', data.jobseekerId || data.userId)
+  console.log('Status:', data.status)
+  console.log('Applied At:', data.appliedAt)
+  console.log('Phone Number:', data.phoneNumber)
+  console.log('Email:', data.email)
+  console.log('Applicant Name:', data.applicantName)
+  console.groupEnd()
+}
+
+// Helper function to fetch user data
+const fetchUserDetails = async (userId: string) => {
+  try {
+    console.log(`Fetching user details for ID: ${userId} from "users" collection`);
+    const userDoc = await getDoc(doc(db, "users", userId))
+    
+    if (userDoc.exists()) {
+      console.log("User data found in 'users' collection");
+      return userDoc.data();
+    } else {
+      console.warn(`User with ID ${userId} not found in 'users' collection`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`Error fetching user data for ${userId}:`, error);
+    return null;
+  }
+}
+
+// Helper function to safely dispatch events in browser environment
+const safeDispatchEvent = (eventName: string) => {
+  if (typeof window !== 'undefined') {
+    console.log(`Dispatching ${eventName} event`);
+    window.dispatchEvent(new Event(eventName));
+  }
+};
+
+// Helper function to safely get user data from localStorage
+const getUserFromLocalStorage = () => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const storedUser = window.localStorage.getItem("ranaojobs_user");
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch (error) {
+        console.error("Error parsing user data from localStorage:", error);
+      }
+    }
+  }
+  return null;
+};
 
 interface ApplicantProfileProps {
   applicantId: string
@@ -45,31 +111,38 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
   const [showContactDialog, setShowContactDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [showInterviewDialog, setShowInterviewDialog] = useState(false)
+  const [interviewDate, setInterviewDate] = useState<Date>()
+  const [isInterviewExpired, setIsInterviewExpired] = useState(false)
 
   useEffect(() => {
     // Get user data from localStorage for current user (employer)
-    const storedUser = localStorage.getItem("ranaojobs_user")
-    if (!storedUser) {
+    const user = getUserFromLocalStorage();
+    if (!user) {
       setError("Authentication required")
       setIsLoading(false)
       return
     }
-
-    const user = JSON.parse(storedUser)
     
     const fetchApplicantData = async () => {
       try {
         // Fetch application data by ID
+        console.log(`Fetching application with ID: ${applicantId} from 'applications' collection`)
         const applicationRef = doc(db, "applications", applicantId)
         const applicationSnapshot = await getDoc(applicationRef)
         
         if (!applicationSnapshot.exists()) {
-          setError("Application not found")
+          console.error(`Application with ID ${applicantId} not found in Firestore "applications" collection`)
+          setError(`Application with ID ${applicantId} not found`)
           setIsLoading(false)
           return
         }
         
         const applicationData = applicationSnapshot.data()
+        console.log("Application data retrieved:", applicationData)
+        
+        // Log detailed application data
+        logApplicationData(applicationData, applicantId)
         
         // Security check: verify this application belongs to the current employer
         if (applicationData.employerId !== user.id) {
@@ -91,9 +164,9 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
         
         // Get applicant user details
         let userData = {
-          name: "Unknown Applicant",
+          name: applicationData.applicantName || "Unknown Applicant",
           email: applicationData.email || "No email provided",
-          phone: applicationData.phone || "No phone provided",
+          phone: applicationData.phoneNumber || applicationData.phone || "No phone provided",
           location: applicationData.location || "Unknown Location",
           profilePhoto: null,
           experience: [],
@@ -106,16 +179,21 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
           githubUrl: null
         }
         
-        if (applicationData.userId) {
-          const userDoc = await getDoc(doc(db, "users", applicationData.userId))
-          if (userDoc.exists()) {
-            const userProfile = userDoc.data()
+        // Get applicant profile from users collection
+        const userId = applicationData.userId || applicationData.jobseekerId;
+        
+        if (userId) {
+          // Fetch user details from users collection
+          const userProfile = await fetchUserDetails(userId);
+          
+          if (userProfile) {
+            // Use user profile data as the primary source of information
             userData = {
-              name: `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() || "Unknown Applicant",
+              name: `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() || userProfile.name || applicationData.applicantName || "Unknown Applicant",
               email: userProfile.email || applicationData.email || "No email provided",
-              phone: userProfile.phone || applicationData.phone || "No phone provided",
+              phone: userProfile.phone || applicationData.phoneNumber || "No phone provided",
               location: userProfile.location || applicationData.location || "Unknown Location",
-              profilePhoto: userProfile.profilePhoto || null,
+              profilePhoto: userProfile.profilePhoto || userProfile.avatar || null,
               experience: userProfile.experience || [],
               education: userProfile.education || [],
               skills: userProfile.skills || applicationData.skills || [],
@@ -125,7 +203,10 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
               linkedinUrl: userProfile.linkedinUrl || userProfile.linkedin || null,
               githubUrl: userProfile.githubUrl || userProfile.github || null
             }
+            console.log("Combined user data:", userData);
           }
+        } else {
+          console.warn("No userId found in application data, using application data only");
         }
         
         // Format the date
@@ -166,7 +247,20 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
           linkedinUrl: userData.linkedinUrl,
           githubUrl: userData.githubUrl,
           notes: applicationData.notes || "",
-          rejectionReason: applicationData.rejectionReason || ""
+          rejectionReason: applicationData.rejectionReason || "",
+          interviewDate: applicationData.interviewDate || null
+        }
+        
+        // Check if interview date is in the past
+        if (applicantData.interviewDate && applicantData.status === "interviewed") {
+          try {
+            const interviewDateObj = parseISO(applicantData.interviewDate);
+            if (isValid(interviewDateObj) && isPast(interviewDateObj)) {
+              setIsInterviewExpired(true);
+            }
+          } catch (error) {
+            console.error("Error parsing interview date:", error);
+          }
         }
         
         setApplicant(applicantData)
@@ -190,6 +284,8 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
     if (!applicant) return
     
     try {
+      console.log(`Updating application ${applicant.id} status to "shortlisted"`)
+      
       // Update application status in Firestore
       const applicationRef = doc(db, "applications", applicant.id)
       await updateDoc(applicationRef, {
@@ -197,11 +293,29 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
         updatedAt: serverTimestamp()
       })
       
+      console.log(`Application ${applicant.id} successfully shortlisted`)
+      
       // Update local state
       setApplicant({ 
         ...applicant, 
         status: "shortlisted" 
       })
+
+      // Send notification to the jobseeker
+      if (applicant.userId) {
+        // Get company name from localStorage
+        const user = getUserFromLocalStorage() || {};
+        const companyName = user.companyName || "An employer"
+
+        await notifyJobseekerApplicationAccepted(
+          applicant.userId,
+          applicant.id,
+          applicant.jobTitle,
+          companyName,
+          applicant.jobId
+        )
+        console.log(`Notification sent to jobseeker ${applicant.userId} about application shortlisting`)
+      }
       
       toast({
         title: "Application shortlisted",
@@ -225,6 +339,8 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
     if (!applicant) return
     
     try {
+      console.log(`Updating application ${applicant.id} status to "rejected" with reason: ${rejectionReason || "none provided"}`)
+      
       // Update application status in Firestore
       const applicationRef = doc(db, "applications", applicant.id)
       await updateDoc(applicationRef, {
@@ -233,12 +349,106 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
         updatedAt: serverTimestamp()
       })
       
+      // Decrement the application count for the job
+      if (applicant.jobId) {
+        await decrementJobApplicationsCount(applicant.jobId)
+      }
+      
+      console.log(`Application ${applicant.id} successfully rejected`)
+      
       // Update local state
       setApplicant({ 
         ...applicant, 
         status: "rejected",
         rejectionReason: rejectionReason
       })
+
+      // Send notification to the jobseeker
+      if (applicant.userId) {
+        // Get company name from localStorage
+        const user = getUserFromLocalStorage() || {};
+        const companyName = user.companyName || "An employer"
+
+        console.log(`Sending rejection notification to jobseeker ${applicant.userId}`)
+        console.log("Applicant data for rejection notification:", {
+          userId: applicant.userId,
+          applicationId: applicant.id,
+          jobTitle: applicant.jobTitle,
+          companyName,
+          jobId: applicant.jobId,
+          reason: rejectionReason
+        });
+        
+        // Try the direct notification function first
+        try {
+          console.log("Using direct notification function for rejection notification");
+          const directResult = await directStoreRejectionNotification(
+            applicant.userId,
+            applicant.id,
+            applicant.jobTitle,
+            companyName,
+            rejectionReason
+          );
+          
+          if (directResult) {
+            console.log("Successfully created direct rejection notification:", directResult);
+            // Dispatch notification update event
+            safeDispatchEvent("userStateChange");
+            toast({
+              title: "Notification sent",
+              description: "The jobseeker has been notified about the rejection.",
+              variant: "default"
+            });
+          } else {
+            console.warn("Direct notification failed, trying regular notification methods");
+            
+            // Fall back to regular notification methods
+            let notificationSent = false;
+            
+            try {
+              // Try using the notification service first
+              notificationSent = await notifyJobseekerApplicationRejected(
+                applicant.userId,
+                applicant.id,
+                applicant.jobTitle,
+                companyName,
+                applicant.jobId,
+                rejectionReason
+              );
+              
+              if (notificationSent) {
+                console.log("Successfully sent rejection notification");
+              } else {
+                console.warn("Failed to send rejection notification, trying direct notification");
+                // Use direct notification creation as fallback
+                const directResult = await createDirectNotification(
+                  applicant.userId,
+                  "Rejected",
+                  applicant.jobTitle,
+                  companyName
+                );
+                
+                if (directResult) {
+                  console.log("Created direct rejection notification");
+                  notificationSent = true;
+                } else {
+                  console.error("Failed to create direct notification");
+                }
+              }
+            } catch (notificationError) {
+              console.error("Error using notification service:", notificationError);
+            }
+            
+            if (notificationSent) {
+              console.log(`Notification sent to jobseeker ${applicant.userId} about application rejection`);
+              // Dispatch notification update event
+              safeDispatchEvent("userStateChange");
+            }
+          }
+        } catch (directError) {
+          console.error("Error with direct notification method:", directError);
+        }
+      }
       
       toast({
         title: "Application rejected",
@@ -295,12 +505,201 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
         return <Badge className="bg-yellow-100 text-yellow-800">Reviewed</Badge>
       case "shortlisted":
         return <Badge className="bg-green-100 text-green-800">Shortlisted</Badge>
+      case "to be interviewed":
+        return <Badge className="bg-purple-100 text-purple-800">To be Interviewed</Badge>
       case "interviewed":
-        return <Badge className="bg-purple-100 text-purple-800">Interviewed</Badge>
+        return isInterviewExpired 
+          ? <Badge className="bg-orange-100 text-orange-800">Interview Expired</Badge>
+          : <Badge className="bg-purple-100 text-purple-800">To be Interviewed</Badge>
       case "rejected":
         return <Badge className="bg-red-100 text-red-800">Rejected</Badge>
+      case "hired":
+        return <Badge className="bg-green-100 text-green-800">Hired</Badge>
       default:
         return <Badge className="bg-gray-100 text-gray-800">{status}</Badge>
+    }
+  }
+
+  const scheduleInterview = async () => {
+    if (!interviewDate) {
+      toast({
+        title: "No date selected",
+        description: "Please select a date for the interview.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      
+      // Format the interview date
+      const formattedInterviewDate = format(interviewDate, "MMMM dd, yyyy")
+      
+      console.log(`Scheduling interview for applicant ${applicantId} on ${formattedInterviewDate}`)
+      
+      // Update application with interview date
+      const applicationRef = doc(db, "applications", applicantId)
+      await updateDoc(applicationRef, {
+        status: "to be interviewed",
+        interviewDate: formattedInterviewDate,
+        interviewScheduledAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
+      
+      console.log(`Updated application ${applicantId} status to "to be interviewed"`)
+
+      // Update our local state
+      setApplicant({
+        ...applicant,
+        status: "to be interviewed",
+        interviewDate: formattedInterviewDate
+      })
+
+      // Send notification to the jobseeker
+      if (applicant.userId) {
+        // Get company name from localStorage
+        const user = getUserFromLocalStorage() || {};
+        const companyName = user.companyName || "An employer"
+
+        console.log(`Sending interview notification to jobseeker ${applicant.userId}`)
+        
+        try {
+          const notificationSent = await sendJobseekerInterviewNotification(
+            applicant.userId,
+            applicant.id,
+            applicant.jobTitle,
+            companyName,
+            applicant.jobId,
+            formattedInterviewDate
+          );
+          
+          if (notificationSent) {
+            console.log(`Successfully sent interview notification to jobseeker ${applicant.userId}`);
+            // Dispatch notification update event
+            safeDispatchEvent("userStateChange");
+          } else {
+            console.error(`Failed to send interview notification to jobseeker ${applicant.userId}`);
+          }
+        } catch (error) {
+          console.error("Error sending interview notification:", error);
+        }
+      }
+
+      // Close dialog
+      setShowInterviewDialog(false)
+      
+      toast({
+        title: "Interview scheduled",
+        description: `Interview scheduled with ${applicant.name} for ${formattedInterviewDate}.`,
+        variant: "default"
+      })
+    } catch (error) {
+      console.error("Error scheduling interview:", error)
+      toast({
+        title: "Failed to schedule interview",
+        description: "An error occurred while scheduling the interview. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleHireApplicant = async () => {
+    if (!applicant) return
+    
+    try {
+      setIsLoading(true)
+      console.log(`Updating application ${applicant.id} status to "hired"`)
+      
+      // Update application status in Firestore
+      const applicationRef = doc(db, "applications", applicant.id)
+      await updateDoc(applicationRef, {
+        status: "hired",
+        hiredAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
+      
+      console.log(`Application ${applicant.id} successfully marked as hired`)
+      
+      // Update local state
+      setApplicant({ 
+        ...applicant, 
+        status: "hired" 
+      })
+
+      // Send notification to the jobseeker
+      if (applicant.userId) {
+        // Get company name from localStorage
+        const user = getUserFromLocalStorage() || {};
+        const companyName = user.companyName || "An employer"
+
+        console.log(`Sending hired notification to jobseeker ${applicant.userId}`)
+        console.log("Applicant data for notification:", {
+          userId: applicant.userId,
+          applicationId: applicant.id,
+          jobTitle: applicant.jobTitle,
+          companyName,
+          jobId: applicant.jobId
+        });
+        
+        try {
+          const notificationSent = await sendJobseekerHireNotification(
+            applicant.userId,
+            applicant.id,
+            applicant.jobTitle,
+            companyName,
+            applicant.jobId
+          );
+          
+          if (notificationSent) {
+            console.log(`Successfully sent hire notification to jobseeker ${applicant.userId}`);
+            // Dispatch notification update event
+            safeDispatchEvent("userStateChange");
+            toast({
+              title: "Notification sent",
+              description: "The jobseeker has been notified about being hired.",
+              variant: "default"
+            });
+          } else {
+            console.error(`Failed to send hire notification to jobseeker ${applicant.userId}`);
+            toast({
+              title: "Notification warning",
+              description: "Could not send notification to the jobseeker. They may not see their updated status until they refresh.",
+              variant: "destructive"
+            });
+          }
+        } catch (error) {
+          console.error("Error sending hire notification:", error);
+          toast({
+            title: "Notification error",
+            description: "Failed to send notification to the jobseeker.",
+            variant: "destructive"
+          });
+        }
+      } else {
+        console.warn("No userId found for applicant, cannot send notification");
+        toast({
+          title: "Notification warning",
+          description: "Could not send notification to the jobseeker because user ID is missing.",
+          variant: "destructive"
+        });
+      }
+      
+      toast({
+        title: "Applicant hired",
+        description: `${applicant.name} has been successfully hired.`,
+      })
+    } catch (error) {
+      console.error("Error hiring applicant:", error)
+      toast({
+        title: "Error",
+        description: "Failed to hire the applicant",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -347,15 +746,54 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
             <p className="text-gray-500">Applied for {applicant.jobTitle}</p>
             {getStatusBadge(applicant.status)}
           </div>
+          {applicant.interviewDate && applicant.status === "interviewed" && (
+            <div className="flex items-center text-sm mt-1">
+              <CalendarIcon className="h-4 w-4 mr-1 text-purple-600" />
+              <span>Interview scheduled for {applicant.interviewDate}</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => router.back()}>
             Back
           </Button>
           <Button
-            onClick={() => {
+            onClick={async () => {
               if (applicant?.email) {
-                window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${applicant.email}`, "_blank")
+                // Open email client
+                if (typeof window !== 'undefined') {
+                  window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${applicant.email}`, "_blank");
+                }
+                
+                // Send notification to jobseeker
+                try {
+                  // Get company name from localStorage
+                  const user = getUserFromLocalStorage() || {};
+                  const companyName = user.companyName || "An employer";
+                  
+                  if (applicant.userId) {
+                    const notificationSent = await notifyJobseekerEmailSent(
+                      applicant.userId,
+                      applicant.id,
+                      applicant.jobTitle,
+                      companyName,
+                      applicant.jobId,
+                      `Regarding your application for ${applicant.jobTitle}`
+                    );
+                    
+                    if (notificationSent) {
+                      toast({
+                        title: "Notification sent",
+                        description: "The jobseeker has been notified about your email.",
+                        variant: "default"
+                      });
+                    } else {
+                      console.warn("Failed to send email notification to jobseeker");
+                    }
+                  }
+                } catch (error) {
+                  console.error("Error sending notification:", error);
+                }
               }
             }}
             className="w-full"
@@ -363,7 +801,7 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
             <Mail className="mr-2 h-4 w-4" />
             Contact via Email
           </Button>
-          {applicant.status !== "shortlisted" && applicant.status !== "rejected" && (
+          {applicant.status !== "shortlisted" && applicant.status !== "rejected" && applicant.status !== "interviewed" && applicant.status !== "to be interviewed" && applicant.status !== "hired" ? (
             <>
               <Button variant="outline" className="text-green-600" onClick={handleShortlistApplicant}>
                 <ThumbsUp className="mr-2 h-4 w-4" />
@@ -374,7 +812,33 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
                 Reject
               </Button>
             </>
-          )}
+          ) : applicant.status === "shortlisted" ? (
+            <Button 
+              className="bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={() => setShowInterviewDialog(true)}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              Schedule Interview
+            </Button>
+          ) : applicant.status === "to be interviewed" ? (
+            <>
+              <Button 
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handleHireApplicant}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Hire
+              </Button>
+              <Button 
+                variant="outline" 
+                className="text-red-600"
+                onClick={handleRejectApplicant}
+              >
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -423,7 +887,7 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Calendar className="h-5 w-5 text-gray-400" />
+                <CalendarIcon className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-500">Applied On</p>
                   <p>{applicant.appliedDate}</p>
@@ -444,7 +908,7 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
                 }}
               >
                 <Download className="mr-2 h-4 w-4" />
-                {applicant.resume ? "Download Resume" : "No Resume Available"}
+                {applicant.resume ? "Download Resume" : "No Resume Available (Resume Uploads Disabled)"}
               </Button>
             </div>
 
@@ -619,7 +1083,7 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
               View All Applicants
             </Button>
             <div className="flex gap-3">
-              {applicant.status !== "shortlisted" && applicant.status !== "rejected" ? (
+              {applicant.status !== "shortlisted" && applicant.status !== "rejected" && applicant.status !== "interviewed" && applicant.status !== "to be interviewed" && applicant.status !== "hired" ? (
                 <>
                   <Button className="bg-green-600 hover:bg-green-700" onClick={handleShortlistApplicant}>
                     <ThumbsUp className="mr-2 h-4 w-4" />
@@ -630,12 +1094,33 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
                     Reject
                   </Button>
                 </>
-              ) : (
-                <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Generate Report
+              ) : applicant.status === "shortlisted" ? (
+                <Button 
+                  className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                  onClick={() => setShowInterviewDialog(true)}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  Schedule Interview
                 </Button>
-              )}
+              ) : applicant.status === "to be interviewed" ? (
+                <>
+                  <Button 
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={handleHireApplicant}
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Hire
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="text-red-600"
+                    onClick={handleRejectApplicant}
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Reject
+                  </Button>
+                </>
+              ) : null}
             </div>
           </CardFooter>
         </Card>
@@ -720,6 +1205,61 @@ export function ApplicantProfile({ applicantId }: ApplicantProfileProps) {
               onClick={() => setShowContactDialog(false)}
             >
               Send Message
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Interview Scheduling Dialog */}
+      <Dialog open={showInterviewDialog} onOpenChange={setShowInterviewDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Interview</DialogTitle>
+            <DialogDescription>
+              Select a date to schedule an interview with {applicant?.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Interview Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !interviewDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {interviewDate ? format(interviewDate, "PPP") : "Select a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={interviewDate}
+                    onSelect={(date: Date | undefined) => setInterviewDate(date)}
+                    initialFocus
+                    disabled={(date: Date) => date < new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-gray-500">
+                The applicant will be notified about the scheduled interview date.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInterviewDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-yellow-500 hover:bg-yellow-600 text-black"
+              onClick={scheduleInterview}
+              disabled={!interviewDate}
+            >
+              Schedule Interview
             </Button>
           </DialogFooter>
         </DialogContent>
