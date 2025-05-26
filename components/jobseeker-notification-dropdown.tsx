@@ -33,7 +33,24 @@ interface JobseekerNotification {
   link?: string | null;
   relatedJob?: any;
   applicationId?: string | null;
+  applicationStatus?: string;
 }
+
+// Helper function to safely get user data from localStorage
+const getUserFromLocalStorage = () => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const storedUser = window.localStorage.getItem("ranaojobs_user");
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch (error) {
+        console.error("Error parsing user data from localStorage:", error);
+      }
+    }
+  }
+  return null;
+};
+
 
 export function JobseekerNotificationDropdown() {
   const router = useRouter()
@@ -42,61 +59,91 @@ export function JobseekerNotificationDropdown() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      setIsLoading(true)
-      setError(null)
-      try {
-        // Get user data from local storage
-        const storedUser = localStorage.getItem("ranaojobs_user")
-        if (!storedUser) {
-          setIsLoading(false);
-          return;
-        }
-        const user = JSON.parse(storedUser);
+  const fetchNotifications = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Get user data from local storage
+      const user = getUserFromLocalStorage();
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
-        // Check if the user is a jobseeker or multi-role with active jobseeker role
-        if (user.role === "jobseeker" || (user.role === "multi" && user.activeRole === "jobseeker")) {
-          const notificationsQuery = query(
-            collection(db, "jobseekernotifications"),
-            where("jobseekerId", "==", user.id),
-            orderBy("createdAt", "desc")
-          );
-          
-          const notificationsSnapshot = await getDocs(notificationsQuery);
-          
-          const jobseekerNotifications: JobseekerNotification[] = notificationsSnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              jobseekerId: data.jobseekerId,
-              title: data.title || "Notification",
-              message: data.message || "",
-              createdAt: data.createdAt,
-              isRead: data.isRead || false,
-              type: data.type || "system",
-              link: data.link || null,
-              relatedJob: data.relatedJob || null,
-              applicationId: data.applicationId || null
-            };
-          });
-          
-          setNotifications(jobseekerNotifications);
-        } else {
-          setNotifications([]);
-        }
-
-      } catch (err: any) {
-        setError("Failed to load notifications")
-        console.error("Error fetching notifications in dropdown:", err)
+      // Check if the user is a jobseeker or multi-role with active jobseeker role
+      if (user.role === "jobseeker" || (user.role === "multi" && user.activeRole === "jobseeker")) {
+        const notificationsQuery = query(
+          collection(db, "jobseekernotifications"),
+          where("jobseekerId", "==", user.id),
+          orderBy("createdAt", "desc")
+        );
+        
+        console.log(`Fetching notifications for jobseeker ${user.id}`);
+        const notificationsSnapshot = await getDocs(notificationsQuery);
+        console.log(`Found ${notificationsSnapshot.size} notifications`);
+        
+        const jobseekerNotifications: JobseekerNotification[] = notificationsSnapshot.docs.map(doc => {
+          const data = doc.data();
+          const notification = {
+            id: doc.id,
+            jobseekerId: data.jobseekerId,
+            title: data.title || "Notification",
+            message: data.message || "",
+            createdAt: data.createdAt,
+            isRead: data.isRead || false,
+            type: data.type || "system",
+            link: data.link || null,
+            relatedJob: data.relatedJob || null,
+            applicationId: data.applicationId || null,
+            applicationStatus: data.applicationStatus || null
+          };
+          console.log(`Notification ${doc.id}:`, notification);
+          return notification;
+        });
+        
+        setNotifications(jobseekerNotifications);
+        console.log("Fetched notifications:", jobseekerNotifications);
+      } else {
         setNotifications([]);
-      } finally {
-        setIsLoading(false)
+      }
+
+    } catch (err: any) {
+      setError("Failed to load notifications")
+      console.error("Error fetching notifications in dropdown:", err)
+      setNotifications([]);
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fetch notifications on initial load
+  useEffect(() => {
+    fetchNotifications()
+    
+    // Listen for user state changes
+    const handleUserStateChange = () => {
+      fetchNotifications()
+    }
+    
+    // Check if running in browser environment
+    if (typeof window !== 'undefined') {
+      window.addEventListener("userStateChange", handleUserStateChange)
+      
+      return () => {
+        window.removeEventListener("userStateChange", handleUserStateChange)
       }
     }
-
-    fetchNotifications()
+    
+    return undefined
   }, [])
+  
+  // Refresh notifications when dropdown is opened
+  useEffect(() => {
+    if (open) {
+      fetchNotifications()
+    }
+  }, [open])
+
 
   // Count unread notifications
   const unreadCount = notifications.filter((notification) => !notification.isRead).length
@@ -106,9 +153,9 @@ export function JobseekerNotificationDropdown() {
     
     try {
       // Get user data from local storage
-      const storedUser = localStorage.getItem("ranaojobs_user")
-      if (!storedUser) return;
-      const user = JSON.parse(storedUser);
+      const user = getUserFromLocalStorage();
+      if (!user) return;
+
 
       // Update in Firestore
       const notificationRef = doc(db, "jobseekernotifications", id);
@@ -139,9 +186,9 @@ export function JobseekerNotificationDropdown() {
   const markAllAsRead = async () => {
     try {
       // Get user data from local storage
-      const storedUser = localStorage.getItem("ranaojobs_user")
-      if (!storedUser) return;
-      const user = JSON.parse(storedUser);
+      const user = getUserFromLocalStorage();
+      if (!user) return;
+
 
       // Get all unread notifications
       const unreadNotifications = notifications.filter(notification => !notification.isRead);
@@ -176,9 +223,9 @@ export function JobseekerNotificationDropdown() {
   const handleNotificationClick = async (notification: JobseekerNotification) => {
     try {
       // Get user data from local storage
-      const storedUser = localStorage.getItem("ranaojobs_user")
-      if (!storedUser) return;
-      const user = JSON.parse(storedUser);
+      const user = getUserFromLocalStorage();
+      if (!user) return;
+
 
       // Mark as read in Firestore
       const notificationRef = doc(db, "jobseekernotifications", notification.id);
@@ -226,6 +273,9 @@ export function JobseekerNotificationDropdown() {
         return <User className="h-5 w-5 text-purple-500" />
       case "alert":
         return <AlertCircle className="h-5 w-5 text-yellow-500" />
+      case "success":
+        return <CheckCircle className="h-5 w-5 text-green-500" />
+
       default:
         return <Bell className="h-5 w-5 text-gray-500" />
     }
@@ -281,6 +331,12 @@ export function JobseekerNotificationDropdown() {
                   <div className="flex-1 space-y-1">
                     <p className="text-sm font-medium">{notification.title}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{notification.message}</p>
+                    {notification.applicationStatus && (
+                      <p className="text-xs font-medium text-blue-600">
+                        Status: {notification.applicationStatus}
+                      </p>
+                    )}
+
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {notification.createdAt ? formatDistanceToNow(new Date(notification.createdAt.toDate()), { addSuffix: true }) : 'Recently'}
                     </p>

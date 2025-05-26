@@ -174,7 +174,7 @@ export default function AdminDashboard() {
         title: doc.data().title || "Untitled Job",
         company: doc.data().companyName || "Unknown Company",
         date: doc.data().createdAt,
-        status: doc.data().isActive ? "Active" : "Inactive"
+        status: doc.data().isActive ? "Hiring" : "Closed"
       }))
       setRecentJobs(recentJobsData)
       
@@ -295,7 +295,7 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-1 text-xs ${
-                          job.status === "Active" 
+                          job.status === "Hiring" 
                             ? "bg-green-100 text-green-800" 
                             : "bg-gray-100 text-gray-800"
                         } rounded-full`}>

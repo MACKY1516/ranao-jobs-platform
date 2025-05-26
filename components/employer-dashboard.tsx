@@ -58,7 +58,7 @@ export function EmployerDashboard({ employerData }: EmployerDashboardProps) {
           applicantName: "Sarah Williams",
           jobTitle: "Project Manager",
           appliedDate: "1 week ago",
-          status: "Interviewed",
+          status: "To be Interviewed",
         },
       ])
 
@@ -228,7 +228,11 @@ export function EmployerDashboard({ employerData }: EmployerDashboardProps) {
                               ? "bg-yellow-100 text-yellow-800"
                               : applicant.status === "Shortlisted"
                                 ? "bg-green-100 text-green-800"
-                                : "bg-purple-100 text-purple-800"
+                                : applicant.status === "To be Interviewed"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : applicant.status === "Hired"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
                         }`}
                       >
                         {applicant.status}

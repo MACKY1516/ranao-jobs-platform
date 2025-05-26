@@ -28,8 +28,9 @@ import Link from "next/link"
 import { db } from "@/lib/firebase"
 import { doc, getDoc, Timestamp } from "firebase/firestore"
 import { format } from "date-fns"
+import { JobReviews } from "@/components/job-reviews"
 
-export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
+export default function jobdetails({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = React.use(params)
   const jobId = unwrappedParams.id
   const router = useRouter()
@@ -265,25 +266,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-2">
-            {userRole !== "employer" && job.isActive && (
-              <Button 
-                className="bg-yellow-500 hover:bg-yellow-600 text-black" 
-                onClick={handleApply}
-              >
-                Apply Now
-              </Button>
-            )}
-            {!job.isActive && (
-              <Badge variant="destructive">This job is no longer accepting applications</Badge>
-            )}
-        <Link href={`/employer/${job.companyId}`}>
-  <Button variant="outline" className="text-black">
-    View Company Profile
-  </Button>
-</Link>
-
-          </div>
+         
         </div>
 
         {/* Job Details */}
@@ -405,14 +388,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
                   </div>
                 </div>
 
-                {userRole !== "employer" && job.isActive && (
-                  <Button 
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-black mt-2"
-                    onClick={handleApply}
-                  >
-                    Apply Now
-                  </Button>
-                )}
+               
               </CardContent>
             </Card>
 
@@ -447,6 +423,16 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Job Reviews Section */}
+        <div className="mt-8">
+          <JobReviews 
+            jobId={job.id} 
+            jobTitle={job.title}
+            employerId={job.companyId}
+            companyName={job.company}
+          />
         </div>
       </div>
 

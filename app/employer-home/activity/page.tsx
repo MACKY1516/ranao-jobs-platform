@@ -40,7 +40,7 @@ export default function EmployerActivityPage() {
     job_post: <Briefcase className="h-4 w-4 text-yellow-600" />,
     job_delete: <XCircle className="h-4 w-4 text-red-600" />,
     job_status_change: <Clock className="h-4 w-4 text-gray-500" />,
-    application: <FileText className="h-4 w-4 text-purple-600" />,
+
     approval: <CheckCircle2 className="h-4 w-4 text-green-600" />,
     rejection: <XCircle className="h-4 w-4 text-red-600" />,
     // Add other employer-specific activity types here with appropriate icons

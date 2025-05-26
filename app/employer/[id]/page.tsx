@@ -9,17 +9,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EmployerRating } from "@/components/employer-rating"
-import { MapPin, Globe, Mail, Phone, Calendar, Users, Briefcase } from "lucide-react"
+import { MapPin, Globe, Mail, Phone, Calendar, Users, Briefcase, Star } from "lucide-react"
 import { BackButton } from "@/components/back-button"
-import { doc, getDoc } from "firebase/firestore"
+import { doc, getDoc, addDoc, collection, updateDoc, serverTimestamp, increment } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 
 async function fetchEmployerById(id: string) {
-  const docRef = doc(db, "users", id);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) return docSnap.data();
-  return null;
+  try {
+    const docRef = doc(db, "users", id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return { ...data, id }; // Make sure id is included in the data
+    }
+    console.log(`Employer with ID ${id} not found`);
+    return null;
+  } catch (error) {
+    console.error("Error fetching employer:", error);
+    return null;
+  }
 }
 
 export default function EmployerProfilePage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +40,7 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
   const [userRole, setUserRole] = useState<string | null>(null)
   const [employer, setEmployer] = useState<any>(null)
   const [jobs, setJobs] = useState<any[]>([])
+  const [isRatingDialogOpen, setIsRatingDialogOpen] = useState(false)
 
   // Check user role
   useEffect(() => {
@@ -42,15 +53,22 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
         console.error("Error parsing user data:", error)
       }
     }
-
-    // Simulate loading data
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
   }, [])
 
   useEffect(() => {
-    fetchEmployerById(employerId).then(data => setEmployer(data));
+    const loadEmployerData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await fetchEmployerById(employerId);
+        setEmployer(data);
+      } catch (error) {
+        console.error("Error loading employer:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadEmployerData();
   }, [employerId])
 
   useEffect(() => {
@@ -59,6 +77,62 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
     // Example:
     // fetchJobsByEmployerId(employer.id).then(setJobs);
   }, [employer]);
+
+  // Function to handle rating submission
+  const handleRatingSubmit = async (rating: number, feedback: string, anonymous: boolean) => {
+    try {
+      if (!employer || !employer.id) {
+        alert("Error: Company information not found");
+        return;
+      }
+      
+      // Get user data from localStorage
+      const userData = localStorage.getItem("ranaojobs_user");
+      if (!userData) {
+        alert("You must be logged in to submit a review");
+        return;
+      }
+      
+      const user = JSON.parse(userData);
+      if (!user.id) {
+        alert("User information is incomplete");
+        return;
+      }
+      
+      // Create the company rating data
+      const ratingData = {
+        companyId: employer.id,
+        companyName: companyName,
+        userId: user.id,
+        userName: anonymous ? 'Anonymous User' : (user.firstName ? `${user.firstName} ${user.lastName || ''}` : 'User'),
+        rating: rating,
+        review: feedback,
+        anonymous: anonymous,
+        timestamp: serverTimestamp(),
+        status: 'active'
+      };
+      
+      // Add the rating to Firestore
+      const ratingRef = await addDoc(collection(db, "companyRatings"), ratingData);
+      console.log("Rating submitted with ID: ", ratingRef.id);
+      
+      // Update the company's average rating and count
+      const companyRef = doc(db, "users", employer.id);
+      await updateDoc(companyRef, {
+        totalRatingSum: increment(rating),
+        totalRatingCount: increment(1),
+        averageRating: ((employer.totalRatingSum || 0) + rating) / ((employer.totalRatingCount || 0) + 1),
+        updatedAt: serverTimestamp()
+      });
+      
+      // Show success message
+      alert("Thank you for your rating!");
+      setIsRatingDialogOpen(false);
+    } catch (error) {
+      console.error("Error submitting rating:", error);
+      alert("Failed to submit rating. Please try again.");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -75,8 +149,33 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
   }
 
   if (!employer) {
-    return <div>Loading...</div>;
+    return (
+      <div className="min-h-screen">
+        <NavBar />
+        <div className="container mx-auto max-w-6xl px-4 pt-20 pb-10">
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
   }
+
+  // Default values for employer properties
+  const companyName = employer.companyName || employer.name || "Company";
+  const companyInitial = companyName ? companyName.charAt(0) : "C";
+  const employerRating = employer.averageRating || 0;
+  const reviewCount = employer.totalRatingCount || 0;
+  const location = employer.address ? `${employer.address}, ${employer.city || 'Marawi City'}` : (employer.location || "Location not specified");
+  const industry = employer.industry || "Industry not specified";
+  const website = employer.website || "#";
+  const email = employer.email || "contact@example.com";
+  const phone = employer.phone || "Not specified";
+  const foundedYear = employer.foundedYear || "Not specified";
+  const employeeCount = employer.companySize || "Not specified";
+  const socialMedia = employer.socialMedia || {};
+  const description = employer.companyDescription || employer.description || "No description available for this company.";
 
   return (
     <div className="min-h-screen">
@@ -89,33 +188,33 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
         <div className="bg-gray-900 text-white rounded-t-lg p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-700 rounded-lg flex items-center justify-center text-2xl font-bold">
-              {employer.name.charAt(0)}
+              {companyInitial}
             </div>
 
             <div className="flex-1">
               <div className="flex flex-col md:flex-row md:items-center gap-2">
-                <h1 className="text-2xl font-bold">{employer.name}</h1>
+                <h1 className="text-2xl font-bold">{companyName}</h1>
                 {employer.verified && <Badge className="bg-blue-500 text-white">Verified</Badge>}
               </div>
 
               <div className="flex items-center mt-1">
                 <EmployerRating
-                  employerId={employer.id}
-                  employerName={employer.name}
-                  initialRating={employer.rating}
+                  employerId={employer.id || employerId}
+                  employerName={companyName}
+                  initialRating={employerRating}
                   showRatingButton={userRole === "jobseeker"}
                 />
-                <span className="text-sm text-gray-300 ml-2">({employer.reviewCount} reviews)</span>
+                <span className="text-sm text-gray-300 ml-2">({reviewCount} reviews)</span>
               </div>
-
+              
               <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-300">
                 <div className="flex items-center">
                   <MapPin className="h-4 w-4 mr-1" />
-                  <span>{employer.location}</span>
+                  <span>{location}</span>
                 </div>
                 <div className="flex items-center">
                   <Briefcase className="h-4 w-4 mr-1" />
-                  <span>{employer.industry}</span>
+                  <span>{industry}</span>
                 </div>
               </div>
             </div>
@@ -137,12 +236,12 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                     <div>
                       <p className="text-sm text-gray-500">Website</p>
                       <a
-                        href={employer.website}
+                        href={website}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:underline"
                       >
-                        {employer.website.replace(/(^\w+:|^)\/\//, "")}
+                        {website.replace(/(^\w+:|^)\/\//, "")}
                       </a>
                     </div>
                   </div>
@@ -151,8 +250,8 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                     <Mail className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-500">Email</p>
-                      <a href={`mailto:${employer.email}`} className="text-blue-600 hover:underline">
-                        {employer.email}
+                      <a href={`mailto:${email}`} className="text-blue-600 hover:underline">
+                        {email}
                       </a>
                     </div>
                   </div>
@@ -161,7 +260,7 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                     <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-500">Phone</p>
-                      <p>{employer.phone}</p>
+                      <p>{phone}</p>
                     </div>
                   </div>
 
@@ -169,7 +268,7 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                     <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-500">Founded</p>
-                      <p>{employer.foundedYear}</p>
+                      <p>{foundedYear}</p>
                     </div>
                   </div>
 
@@ -177,16 +276,16 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                     <Users className="h-5 w-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-500">Company Size</p>
-                      <p>{employer.employeeCount}</p>
+                      <p>{employeeCount}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Social Media Links */}
                 <div className="pt-2 border-t">
-                  <p className="text-sm text-gray-500 mb-2">Connect with {employer.name}</p>
+                  <p className="text-sm text-gray-500 mb-2">Connect with {companyName}</p>
                   <div className="flex gap-2">
-                    {Object.entries(employer.socialMedia).map(([platform, url]) => (
+                    {Object.entries(socialMedia).map(([platform, url]) => (
                       <a
                         key={platform}
                         href={url as string}
@@ -225,17 +324,11 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-gray-500 mb-4">
-                    Share your experience with {employer.name} to help other job seekers make informed decisions.
+                    Share your experience with {companyName} to help other job seekers make informed decisions.
                   </p>
                   <Button
                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-black"
-                    onClick={() => {
-                      // Open rating dialog
-                      const ratingComponent = document.querySelector("[data-employer-rating]")
-                      if (ratingComponent) {
-                        ;(ratingComponent as HTMLElement).click()
-                      }
-                    }}
+                    onClick={() => setIsRatingDialogOpen(true)}
                   >
                     Write a Review
                   </Button>
@@ -255,10 +348,10 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
               <TabsContent value="about" className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>About {employer.name}</CardTitle>
+                    <CardTitle>About {companyName}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-gray-700">{employer.description}</p>
+                    <p className="text-gray-700">{description}</p>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -310,23 +403,27 @@ export default function EmployerProfilePage({ params }: { params: Promise<{ id: 
       </div>
 
       <Footer />
-
-      {/* Hidden button for rating dialog trigger */}
-      <button
-        className="hidden"
-        data-employer-rating
-        onClick={() => {
-          const ratingDialog = document.querySelector("[data-rating-dialog]")
-          if (ratingDialog) {
-            ;(ratingDialog as HTMLElement).click()
-          }
-        }}
-      />
-
-      {/* Rating component with hidden trigger */}
-      <div className="hidden">
-        <EmployerRating employerId={employer.id} employerName={employer.name} initialRating={0} />
-      </div>
+      
+      <Dialog open={isRatingDialogOpen} onOpenChange={setIsRatingDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rate this Employer</DialogTitle>
+            <DialogDescription>
+              Share your experience working with {companyName}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <EmployerRating 
+            employerId={employer?.id || employerId}
+            employerName={companyName}
+            initialRating={0}
+            showRatingButton={false}
+                          size="lg"
+              directMode={true}
+              onRatingSubmit={handleRatingSubmit}
+            />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

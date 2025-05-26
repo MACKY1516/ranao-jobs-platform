@@ -15,6 +15,7 @@ interface JobCardProps {
   variant?: "default" | "horizontal"
   jobId: string
   companyId?: string
+  job?: any // The job data from Firestore
 }
 
 interface JobData {
@@ -29,6 +30,13 @@ interface JobData {
   postedAt: string | Timestamp
   deadline: string
   tags: string[]
+  employerName?: string // Add this to fix TypeScript error
+}
+
+// Helper function to format location
+const formatLocation = (location: string | undefined): string => {
+  if (!location) return "Location not specified";
+  return location;
 }
 
 export function JobCard({ variant = "default", jobId, companyId }: JobCardProps) {
@@ -42,26 +50,17 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
   // Check if user is jobseeker
   useEffect(() => {
     setMounted(true)
+    // Only run this on client-side
+    if (typeof window !== 'undefined') {
     const userData = localStorage.getItem("ranaojobs_user")
     if (userData) {
       try {
         const user = JSON.parse(userData)
         setIsJobseeker(user.role === "jobseeker" || (user.role === "multi" && user.activeRole === "jobseeker"))
-      } catch (error) {
-        console.error("Error parsing user data:", error)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    // Check user role from localStorage
-    const storedUser = localStorage.getItem("ranaojobs_user")
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser)
         setUserRole(user.activeRole || user.role)
       } catch (error) {
         console.error("Error parsing user data:", error)
+        }
       }
     }
   }, [])
@@ -98,7 +97,8 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
             salary: jobData.salary || "Not specified",
             postedAt: jobData.postedAt || "Recently",
             deadline: jobData.deadline || "",
-            tags: jobData.tags || []
+            tags: jobData.tags || [],
+            employerName: jobData.employerName || jobData.company || "Unknown Company"
           })
         } else {
           console.log(`Job not found: ${jobId}`)
@@ -185,14 +185,14 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
                   <Link href={`/job/${job.id}`}>{job.title}</Link>
                 </h3>
                 <Badge variant="outline" className="w-fit">
-                  {job.type}
+                  {job.type || "Full-time"}
                 </Badge>
               </div>
 
               <div className="flex flex-wrap gap-y-2 gap-x-4 text-sm text-gray-500 dark:text-gray-400 mb-3">
                 <div className="flex items-center gap-1">
                   <Building2 className="h-4 w-4 mr-1" />
-                  <span>{job.company}</span>
+                  <span>{job.company || job.employerName}</span>
                   <EmployerRating
                     employerId={job.companyId || companyId || ""}
                     employerName={job.company}
@@ -203,7 +203,7 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
                 </div>
                 <div className="flex items-center">
                   <MapPin className="h-4 w-4 mr-1" />
-                  <span>{job.location}</span>
+                  <span>{formatLocation(job.location)}</span>
                 </div>
                 <div className="flex items-center">
                   <Calendar className="h-4 w-4 mr-1" />
@@ -231,12 +231,7 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
                   </Button>
                 </Link>
 
-                <Link href={`/employer/${job.companyId || companyId}`}>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    <ExternalLink className="h-4 w-4" />
-                    View Profile
-                  </Button>
-                </Link>
+                
 
                 {isJobseeker && (
                   <Link href={`/job/${job.id}/apply`}>
@@ -260,7 +255,7 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
           <h3 className="text-lg font-semibold hover:text-yellow-500 transition-colors">
             <Link href={`/job/${job.id}`}>{job.title}</Link>
           </h3>
-          <Badge variant="outline">{job.type}</Badge>
+          <Badge variant="outline">{job.type || "Full-time"}</Badge>
         </div>
 
         <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
@@ -279,7 +274,7 @@ export function JobCard({ variant = "default", jobId, companyId }: JobCardProps)
           </div>
           <div className="flex items-center">
             <MapPin className="h-4 w-4 mr-1" />
-            <span>{job.location}</span>
+            <span>{formatLocation(job.location)}</span>
           </div>
           <div className="flex items-center text-green-600 dark:text-green-400 font-medium">
             <PhilippinePeso className="h-4 w-4 mr-1" />

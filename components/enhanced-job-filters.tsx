@@ -16,7 +16,22 @@ interface EnhancedJobFiltersProps {
   onFilterChange?: (filters: any) => void
 }
 
-export function EnhancedJobFilters({ className, onFilterChange }: EnhancedJobFiltersProps) {
+export interface JobFilters {
+  keywords?: string
+  jobTypes?: string[]
+  experienceLevel?: string
+  salaryRange?: [number, number]
+  locations?: string[]
+  industries?: string[]
+}
+
+// These should be fetched from your database or API in a real app
+const jobTypes = ["Full-time", "Part-time", "Contract", "Internship", "Remote", "Temporary"];
+const locations = ["Marawi City", "Iligan City", "Cagayan de Oro", "Manila", "Remote"];
+const industries = ["Technology", "Healthcare", "Education", "Finance", "Marketing", "Administration", "Customer Service", "Engineering", "Sales"];
+
+export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFiltersProps) {
+
   const [mounted, setMounted] = useState(false)
   const [salaryRange, setSalaryRange] = useState([20000, 100000])
   const [initialLoad, setInitialLoad] = useState(true)
@@ -35,43 +50,38 @@ export function EnhancedJobFilters({ className, onFilterChange }: EnhancedJobFil
     setMounted(true)
   }, [])
   
-  // Create a stable filter object with useCallback to avoid recreating it on every render
-  const getFiltersObject = useCallback(() => {
-    return {
-      keyword: keywordFilter,
-      jobType: jobTypeFilters,
-      experience: experienceFilter,
-      locations: locationFilters,
-      industry: industryFilters,
-      salary: {
-        min: salaryRange[0],
-        max: salaryRange[1],
-      },
-    }
-  }, [keywordFilter, jobTypeFilters, experienceFilter, locationFilters, industryFilters, salaryRange])
-  
-  // Only trigger filter change when explicitly requested
+  // Only update filters when explicitly requested
   useEffect(() => {
-    if (!mounted || initialLoad) return
+    const active: string[] = []
     
-    if (shouldApplyFilters && onFilterChange) {
-      onFilterChange(getFiltersObject())
-      setShouldApplyFilters(false) // Reset after applying
-    }
-  }, [shouldApplyFilters, onFilterChange, getFiltersObject, mounted, initialLoad])
+    if (filters.keywords) active.push("keywords")
+    if (filters.jobTypes && filters.jobTypes.length > 0) active.push("jobTypes")
+    if (filters.experienceLevel && filters.experienceLevel !== "any") active.push("experienceLevel")
+    if (filters.salaryRange && (filters.salaryRange[0] > 20000 || filters.salaryRange[1] < 100000)) active.push("salary")
+    if (filters.locations && filters.locations.length > 0) active.push("locations")
+    if (filters.industries && filters.industries.length > 0) active.push("industries")
+    
+    setActiveFilters(active)
+  }, [filters])
+
 
   // Don't render during SSR to prevent hydration mismatch
   if (!mounted) {
     return null
   }
   
-  const handleJobTypeChange = (type: string, checked: boolean) => {
-    setJobTypeFilters(prev => {
-      if (checked) {
-        return [...prev, type]
-      } else {
-        return prev.filter(t => t !== type)
-      }
+  const formatSalary = (value: number) => {
+    return `₱${value.toLocaleString()}`
+  }
+
+  const toggleJobType = (type: string) => {
+    setFilters(prev => {
+      const updatedTypes = prev.jobTypes?.includes(type)
+        ? prev.jobTypes.filter(t => t !== type)
+        : [...(prev.jobTypes || []), type]
+      
+      return { ...prev, jobTypes: updatedTypes }
+
     })
     // Don't automatically apply filters
   }
@@ -108,32 +118,33 @@ export function EnhancedJobFilters({ className, onFilterChange }: EnhancedJobFil
     setShouldApplyFilters(true)
   }
   
-  const resetFilters = () => {
-    setKeywordFilter("")
-    setJobTypeFilters([])
-    setExperienceFilter("any")
-    setLocationFilters([])
-    setIndustryFilters([])
-    setSalaryRange([20000, 100000])
-    
-    // Apply the reset filters
-    if (onFilterChange) {
-      onFilterChange({
-        keyword: "",
-        jobType: [],
-        experience: "any",
-        locations: [],
-        industry: [],
-        salary: {
-          min: 20000,
-          max: 100000,
-        },
-      })
+  const handleKeywordSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (onFiltersChange) {
+      onFiltersChange(filters)
     }
   }
 
-  const formatSalary = (value: number) => {
-    return `₱${value.toLocaleString()}`
+  const applyFilters = () => {
+    if (onFiltersChange) {
+      onFiltersChange(filters)
+    }
+  }
+
+  const resetFilters = () => {
+    setFilters({
+      keywords: "",
+      jobTypes: [],
+      experienceLevel: "any",
+      salaryRange: [20000, 100000],
+      locations: [],
+      industries: []
+    })
+    
+    if (onFiltersChange) {
+      onFiltersChange({})
+    }
+
   }
 
   const jobTypes = ["Full-time", "Part-time", "Contract", "Internship", "Remote"]

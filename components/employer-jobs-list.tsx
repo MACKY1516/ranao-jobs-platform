@@ -30,9 +30,10 @@ import {
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { getEmployerJobPostings, deleteJobPosting, JobPosting } from "@/lib/jobs"
+import { getEmployerJobPostings, deleteJobPosting, JobPosting, toggleJobStatus } from "@/lib/jobs"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
+import { Switch } from "@/components/ui/switch"
 
 export function EmployerJobsList() {
   const router = useRouter()
@@ -44,6 +45,7 @@ export function EmployerJobsList() {
   const [isLoading, setIsLoading] = useState(true)
   const [jobToDelete, setJobToDelete] = useState<JobPosting | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null)
 
   useEffect(() => {
     // Get user data from localStorage
@@ -133,9 +135,9 @@ export function EmployerJobsList() {
 
   const getStatusBadge = (isActive: boolean | undefined) => {
     if (isActive === true) {
-      return <Badge className="bg-green-100 text-green-800">Active</Badge>
+      return <Badge className="bg-green-100 text-green-800">Hiring</Badge>
     } else {
-      return <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+      return <Badge className="bg-gray-100 text-gray-800">Closed</Badge>
     }
   }
 
@@ -161,6 +163,33 @@ export function EmployerJobsList() {
     }
     
     return "N/A"
+  }
+
+  const handleToggleStatus = async (jobId: string, isActive: boolean) => {
+    try {
+      setIsTogglingStatus(jobId)
+      await toggleJobStatus(jobId, !isActive)
+      
+      // Update the jobs state with the new status
+      setJobs(prevJobs => prevJobs.map(job => 
+        job.id === jobId ? { ...job, isActive: !isActive } : job
+      ))
+      
+      toast({
+        title: "Success",
+        description: `Job status updated to ${!isActive ? 'hiring' : 'closed'}`,
+        variant: "default",
+      })
+    } catch (error) {
+      console.error("Error toggling job status:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update job status",
+        variant: "destructive",
+      })
+    } finally {
+      setIsTogglingStatus(null)
+    }
   }
 
   if (isLoading) {
@@ -204,8 +233,8 @@ export function EmployerJobsList() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="active">Hiring</SelectItem>
+            <SelectItem value="inactive">Closed</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -245,8 +274,19 @@ export function EmployerJobsList() {
                           <h3 className="font-semibold text-lg">{job.title}</h3>
                           <p className="text-sm text-gray-500 mt-1">{job.category}</p>
                         </div>
-                        <div className="flex items-center">
-                          {getStatusBadge(job.isActive)}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center">
+                            {getStatusBadge(job.isActive)}
+                            <Switch 
+                              checked={job.isActive === true}
+                              onCheckedChange={() => handleToggleStatus(job.id as string, job.isActive === true)}
+                              disabled={isTogglingStatus === job.id}
+                              className="ml-2"
+                            />
+                            {isTogglingStatus === job.id && (
+                              <span className="text-xs text-gray-500 ml-1">Updating...</span>
+                            )}
+                          </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon">
@@ -368,7 +408,20 @@ export function EmployerJobsList() {
                       <td className="p-4">{job.location}</td>
                       <td className="p-4">{job.type}</td>
                       <td className="p-4">{formatDate(job.createdAt)}</td>
-                      <td className="p-4">{getStatusBadge(job.isActive)}</td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(job.isActive)}
+                          <Switch 
+                            checked={job.isActive === true}
+                            onCheckedChange={() => handleToggleStatus(job.id as string, job.isActive === true)}
+                            disabled={isTogglingStatus === job.id}
+                            className="ml-2"
+                          />
+                          {isTogglingStatus === job.id && (
+                            <span className="text-xs text-gray-500">Updating...</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-4">{getVerificationBadge(job.verificationStatus)}</td>
                       <td className="p-4">{job.applicationsCount || 0}</td>
                       <td className="p-4">

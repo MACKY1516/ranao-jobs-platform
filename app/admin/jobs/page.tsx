@@ -151,8 +151,8 @@ export default function AdminJobsPage() {
   // Get activity status badge
   const getActivityBadge = (isActive: boolean) => {
     return isActive ? 
-      <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Active</span> :
-      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">Inactive</span>
+      <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Hiring</span> :
+      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">Closed</span>
   }
 
   return (
@@ -182,8 +182,10 @@ export default function AdminJobsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Jobs</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
+
+              <SelectItem value="active">Hiring</SelectItem>
+              <SelectItem value="inactive">Closed</SelectItem>
+
             </SelectContent>
           </Select>
         </div>

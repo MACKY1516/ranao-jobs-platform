@@ -212,7 +212,7 @@ export default function AdminJobDetailsPage({ params }: { params: Promise<{ id: 
                   <XCircle className="h-5 w-5 text-red-500 mr-2" />
                 )}
                 <span className="text-lg font-medium">
-                  {jobData?.isActive ? "Active" : "Inactive"}
+                  {jobData?.isActive ? "Hiring" : "Closed"}
                 </span>
               </div>
             </div>
