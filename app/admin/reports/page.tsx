@@ -80,6 +80,7 @@ export default function ReportsPage() {
     jobCategoriesChartData: ChartDataPoint[];
     jobTypesData: ChartDataPoint[];
     salaryRangesData: any[];
+
     applicationTrendData: { name: string; applications: number }[];
     applicationStatusData: ChartDataPoint[];
     popularJobCategoriesData: ChartDataPoint[];
@@ -175,7 +176,9 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+
             id: doc.id,
+
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)
           }
@@ -186,7 +189,9 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+
             id: doc.id,
+
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)
           }
@@ -197,7 +202,9 @@ export default function ReportsPage() {
           const data = doc.data()
           return {
             ...data,
+
             id: doc.id,
+
             appliedAt: formatTimestamp(data.appliedAt),
             createdAt: formatTimestamp(data.createdAt),
             updatedAt: formatTimestamp(data.updatedAt)

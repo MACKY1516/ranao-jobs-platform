@@ -23,6 +23,7 @@ import { getUserProfile, updateUserProfile, requestMultiRoleUpgrade } from "@/li
 import { uploadJobseekerPhoto, uploadJobseekerResume } from "@/lib/fileUpload"
 import { useToast } from "@/components/ui/use-toast"
 import { recordActivity } from "@/lib/activity-logger"
+
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+
 
 // Define a type for the additional document
 interface AdditionalDocument {

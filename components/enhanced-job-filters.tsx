@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 
 interface EnhancedJobFiltersProps {
   className?: string
-  onFiltersChange?: (filters: JobFilters) => void
+  onFilterChange?: (filters: any) => void
 }
 
 export interface JobFilters {
@@ -31,17 +31,21 @@ const locations = ["Marawi City", "Iligan City", "Cagayan de Oro", "Manila", "Re
 const industries = ["Technology", "Healthcare", "Education", "Finance", "Marketing", "Administration", "Customer Service", "Engineering", "Sales"];
 
 export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFiltersProps) {
-  const [mounted, setMounted] = useState(false)
-  const [filters, setFilters] = useState<JobFilters>({
-    keywords: "",
-    jobTypes: [],
-    experienceLevel: "any",
-    salaryRange: [20000, 100000],
-    locations: [],
-    industries: []
-  })
-  const [activeFilters, setActiveFilters] = useState<string[]>([])
 
+  const [mounted, setMounted] = useState(false)
+  const [salaryRange, setSalaryRange] = useState([20000, 100000])
+  const [initialLoad, setInitialLoad] = useState(true)
+  
+  // Filter states
+  const [keywordFilter, setKeywordFilter] = useState("")
+  const [jobTypeFilters, setJobTypeFilters] = useState<string[]>([])
+  const [experienceFilter, setExperienceFilter] = useState("any")
+  const [locationFilters, setLocationFilters] = useState<string[]>([])
+  const [industryFilters, setIndustryFilters] = useState<string[]>([])
+  // State to track if filters should be applied
+  const [shouldApplyFilters, setShouldApplyFilters] = useState(false)
+
+  // Only run once on mount
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -60,6 +64,7 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
     setActiveFilters(active)
   }, [filters])
 
+
   // Don't render during SSR to prevent hydration mismatch
   if (!mounted) {
     return null
@@ -76,39 +81,41 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
         : [...(prev.jobTypes || []), type]
       
       return { ...prev, jobTypes: updatedTypes }
-    })
-  }
 
-  const toggleLocation = (location: string) => {
-    setFilters(prev => {
-      const updatedLocations = prev.locations?.includes(location)
-        ? prev.locations.filter(l => l !== location)
-        : [...(prev.locations || []), location]
-      
-      return { ...prev, locations: updatedLocations }
     })
+    // Don't automatically apply filters
   }
-
-  const toggleIndustry = (industry: string) => {
-    setFilters(prev => {
-      const updatedIndustries = prev.industries?.includes(industry)
-        ? prev.industries.filter(i => i !== industry)
-        : [...(prev.industries || []), industry]
-      
-      return { ...prev, industries: updatedIndustries }
+  
+  const handleLocationChange = (location: string, checked: boolean) => {
+    setLocationFilters(prev => {
+      if (checked) {
+        return [...prev, location]
+      } else {
+        return prev.filter(l => l !== location)
+      }
     })
+    // Don't automatically apply filters
   }
-
+  
+  const handleIndustryChange = (industry: string, checked: boolean) => {
+    setIndustryFilters(prev => {
+      if (checked) {
+        return [...prev, industry]
+      } else {
+        return prev.filter(i => i !== industry)
+      }
+    })
+    // Don't automatically apply filters
+  }
+  
   const handleExperienceChange = (value: string) => {
-    setFilters(prev => ({ ...prev, experienceLevel: value }))
+    setExperienceFilter(value)
+    // Don't automatically apply filters
   }
-
-  const handleSalaryChange = (values: number[]) => {
-    setFilters(prev => ({ ...prev, salaryRange: values as [number, number] }))
-  }
-
-  const handleKeywordsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters(prev => ({ ...prev, keywords: e.target.value }))
+  
+  const handleKeywordSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setShouldApplyFilters(true)
   }
   
   const handleKeywordSearch = (e: React.FormEvent) => {
@@ -137,31 +144,24 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
     if (onFiltersChange) {
       onFiltersChange({})
     }
+
   }
 
-  const removeFilter = (filter: string) => {
-    switch (filter) {
-      case "keywords":
-        setFilters(prev => ({ ...prev, keywords: "" }))
-        break
-      case "jobTypes":
-        setFilters(prev => ({ ...prev, jobTypes: [] }))
-        break
-      case "experienceLevel":
-        setFilters(prev => ({ ...prev, experienceLevel: "any" }))
-        break
-      case "salary":
-        setFilters(prev => ({ ...prev, salaryRange: [20000, 100000] }))
-        break
-      case "locations":
-        setFilters(prev => ({ ...prev, locations: [] }))
-        break
-      case "industries":
-        setFilters(prev => ({ ...prev, industries: [] }))
-        break
-    }
-    
-    setActiveFilters(prev => prev.filter(f => f !== filter))
+  const jobTypes = ["Full-time", "Part-time", "Contract", "Internship", "Remote"]
+  const locations = ["Marawi City", "Iligan City", "Cagayan de Oro", "Davao City", "Remote"]
+  const industries = [
+    "Technology",
+    "Healthcare",
+    "Education",
+    "Finance",
+    "Government",
+    "Retail",
+    "Manufacturing",
+    "Agriculture",
+  ]
+  
+  const applyFilters = () => {
+    setShouldApplyFilters(true)
   }
 
   return (
@@ -170,7 +170,12 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex justify-between items-center">
             <span>Filters</span>
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-gray-500" onClick={resetFilters}>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-8 px-2 text-gray-500"
+              onClick={resetFilters}
+            >
               Reset All
             </Button>
           </CardTitle>
@@ -221,10 +226,10 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
               <Input 
                 type="text" 
-                placeholder="Job title, skills, or company" 
+                placeholder="Search job titles, skills..." 
                 className="pl-8" 
-                value={filters.keywords}
-                onChange={handleKeywordsChange}
+                value={keywordFilter}
+                onChange={(e) => setKeywordFilter(e.target.value)}
               />
             </form>
           </div>
@@ -236,9 +241,9 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
               {jobTypes.map((type) => (
                 <div key={type} className="flex items-center space-x-2">
                   <Checkbox 
-                    id={`job-type-${type.toLowerCase()}`} 
-                    checked={filters.jobTypes?.includes(type)}
-                    onCheckedChange={() => toggleJobType(type)}
+                    id={`job-type-${type.toLowerCase()}`}
+                    checked={jobTypeFilters.includes(type)}
+                    onCheckedChange={(checked) => handleJobTypeChange(type, checked === true)}
                   />
                   <label
                     htmlFor={`job-type-${type.toLowerCase()}`}
@@ -255,7 +260,7 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
           <div className="space-y-2">
             <Label>Experience Level</Label>
             <RadioGroup 
-              value={filters.experienceLevel} 
+              value={experienceFilter} 
               onValueChange={handleExperienceChange}
             >
               {[
@@ -304,8 +309,8 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
                 <div key={location} className="flex items-center space-x-2">
                   <Checkbox 
                     id={`location-${location.toLowerCase().replace(/\s+/g, "-")}`}
-                    checked={filters.locations?.includes(location)}
-                    onCheckedChange={() => toggleLocation(location)}
+                    checked={locationFilters.includes(location)}
+                    onCheckedChange={(checked) => handleLocationChange(location, checked === true)}
                   />
                   <label
                     htmlFor={`location-${location.toLowerCase().replace(/\s+/g, "-")}`}
@@ -326,8 +331,8 @@ export function EnhancedJobFilters({ className, onFiltersChange }: EnhancedJobFi
                 <div key={industry} className="flex items-center space-x-2">
                   <Checkbox 
                     id={`industry-${industry.toLowerCase()}`}
-                    checked={filters.industries?.includes(industry)}
-                    onCheckedChange={() => toggleIndustry(industry)}
+                    checked={industryFilters.includes(industry)}
+                    onCheckedChange={(checked) => handleIndustryChange(industry, checked === true)}
                   />
                   <label
                     htmlFor={`industry-${industry.toLowerCase()}`}

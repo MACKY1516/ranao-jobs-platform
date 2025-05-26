@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase"
 import { collection, query, where, getDocs, orderBy, doc, getDoc, Timestamp } from "firebase/firestore"
 import { format, parseISO, isValid } from "date-fns"
 
+
 export default function JobseekerApplicationsPage() {
   const router = useRouter()
   const [userData, setUserData] = useState<any>(null)
@@ -23,6 +24,7 @@ export default function JobseekerApplicationsPage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [applications, setApplications] = useState<any[]>([])
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+
 
   useEffect(() => {
     // Listen for notification updates

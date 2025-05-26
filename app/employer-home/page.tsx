@@ -303,6 +303,7 @@ export default function EmployerHomePage() {
                 <Button variant="outline">View Applicants</Button>
               </Link>
               {/* <Link href="/employer-home/notification">
+
                 <Button variant="outline" className="relative">
                   <Bell className="mr-2 h-4 w-4" />
                   Notifications
@@ -313,6 +314,7 @@ export default function EmployerHomePage() {
                   )}
                 </Button>
               </Link> */}
+
             </div>
           </div>
 

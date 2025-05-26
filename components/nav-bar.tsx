@@ -235,6 +235,7 @@ export function NavBar() {
                     null
                   }
 
+
                   {/* Theme Toggle */}
                   <ModeToggle />
 
@@ -347,6 +348,7 @@ export function NavBar() {
                 <JobseekerNotificationDropdown key={`js-mobile-${notificationRefresh}`} /> : 
                 null
               )}
+
               
               <ModeToggle />
               <button className="text-white" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">

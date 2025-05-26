@@ -55,6 +55,7 @@ export interface JobseekerNotification {
   };
 }
 
+
 /**
  * Add a notification for admin users
  * @param title Title of the notification
@@ -384,6 +385,7 @@ export const addJobseekerNotification = async (
 }
 
 /**
+
  * Add an activity for an employer
  * @param employerId The ID of the employer
  * @param type The type of activity (application, approval, info)
@@ -446,6 +448,7 @@ export const addEmployerActivity = async (employerId: string, type: string, mess
         additionalData
       );
     }
+
 
     return true
   } catch (error) {
@@ -694,6 +697,7 @@ export const notifyJobseekerEmailSent = async (
 }
 
 /**
+
  * Fetch notifications for a specific employer
  * @param employerId The ID of the employer
  * @returns A promise resolving to an array of EmployerRelatedNotification
@@ -1299,4 +1303,5 @@ export const sendJobseekerHireNotification = async (
   }
   
   return success;
+
 } 

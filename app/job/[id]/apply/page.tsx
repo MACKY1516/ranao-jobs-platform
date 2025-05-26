@@ -18,6 +18,7 @@ import { AuthCheckModal } from "@/components/auth-check-modal"
 import { addEmployerActivity } from "@/lib/notifications"
 import { incrementJobApplicationsCount } from "@/lib/jobs"
 import { getDoc, doc, addDoc, collection, serverTimestamp } from "firebase/firestore"
+
 import { db } from "@/lib/firebase"
 
 export default function ApplyJobPage({ params }: { params: Promise<{ id: string }> }) {
@@ -284,6 +285,7 @@ export default function ApplyJobPage({ params }: { params: Promise<{ id: string 
       setTimeout(() => {
         router.push("/jobseeker/applications")
       }, 2000)
+
     } catch (err) {
       console.error("Application submission error:", err)
       setError("An error occurred while submitting your application. Please try again.")

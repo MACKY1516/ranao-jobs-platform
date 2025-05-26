@@ -182,8 +182,10 @@ export default function AdminJobsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Jobs</SelectItem>
+
               <SelectItem value="active">Hiring</SelectItem>
               <SelectItem value="inactive">Closed</SelectItem>
+
             </SelectContent>
           </Select>
         </div>

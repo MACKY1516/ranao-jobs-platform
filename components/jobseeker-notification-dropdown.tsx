@@ -51,6 +51,7 @@ const getUserFromLocalStorage = () => {
   return null;
 };
 
+
 export function JobseekerNotificationDropdown() {
   const router = useRouter()
   const [notifications, setNotifications] = useState<JobseekerNotification[]>([])
@@ -143,6 +144,7 @@ export function JobseekerNotificationDropdown() {
     }
   }, [open])
 
+
   // Count unread notifications
   const unreadCount = notifications.filter((notification) => !notification.isRead).length
 
@@ -153,6 +155,7 @@ export function JobseekerNotificationDropdown() {
       // Get user data from local storage
       const user = getUserFromLocalStorage();
       if (!user) return;
+
 
       // Update in Firestore
       const notificationRef = doc(db, "jobseekernotifications", id);
@@ -185,6 +188,7 @@ export function JobseekerNotificationDropdown() {
       // Get user data from local storage
       const user = getUserFromLocalStorage();
       if (!user) return;
+
 
       // Get all unread notifications
       const unreadNotifications = notifications.filter(notification => !notification.isRead);
@@ -221,6 +225,7 @@ export function JobseekerNotificationDropdown() {
       // Get user data from local storage
       const user = getUserFromLocalStorage();
       if (!user) return;
+
 
       // Mark as read in Firestore
       const notificationRef = doc(db, "jobseekernotifications", notification.id);
@@ -270,6 +275,7 @@ export function JobseekerNotificationDropdown() {
         return <AlertCircle className="h-5 w-5 text-yellow-500" />
       case "success":
         return <CheckCircle className="h-5 w-5 text-green-500" />
+
       default:
         return <Bell className="h-5 w-5 text-gray-500" />
     }
@@ -330,6 +336,7 @@ export function JobseekerNotificationDropdown() {
                         Status: {notification.applicationStatus}
                       </p>
                     )}
+
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {notification.createdAt ? formatDistanceToNow(new Date(notification.createdAt.toDate()), { addSuffix: true }) : 'Recently'}
                     </p>

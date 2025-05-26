@@ -309,7 +309,7 @@ export default function FindJobsPage() {
             <div className="w-full lg:w-1/4">
               <EnhancedJobFilters 
                 className="sticky top-24" 
-                onFiltersChange={handleFiltersChange} 
+                onFilterChange={handleFiltersChange} 
               />
             </div>
 
@@ -393,6 +393,8 @@ export default function FindJobsPage() {
                   ))}
                 </div>
               ) : (
+                <>
+                  {jobs.length > 0 ? (
                 <div className="grid grid-cols-1 gap-6">
                   {filteredJobs.length > 0 ? (
                     currentJobs.map((job) => (
@@ -404,6 +406,12 @@ export default function FindJobsPage() {
                     </div>
                   )}
                 </div>
+                  ) : (
+                    <div className="text-center p-10 bg-white rounded-lg">
+                      <p className="text-gray-500">No jobs available at the moment.</p>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Pagination */}
